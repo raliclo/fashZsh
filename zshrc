@@ -12,6 +12,21 @@ export LoginDay=$(date +%F)
 # [NATHANIEL LANDAU] (https://natelandau.com/nathaniel-landaus-resume/)
 
 
+# ===========================================================================
+# 🚀 0. STARTUP SCRIPT MANAGEMENT (HOISTING) / 啟動腳本生命週期管理
+# ==============================================================================
+
+# Executed immediately at the beginning of setup / 於配置開頭最先執行的基礎設定
+function START_UP@BEGIN() {
+    echo "[Info] Running boot scripts... / 正在執行初始引導腳本..."     
+    # Bind xargs to scale perfectly with system core threads / 平行化 xargs 執行緒動態綁定
+    alias xxargs="xargs -n 1 -P $PACORES"
+    alias sll=subl
+}
+START_UP@BEGIN
+# NOTE: `START_UP@BEGIN` is invoked early during dotfiles loading. Keep it
+# lightweight and idempotent: register aliases and inexpensive bindings only.
+
 # ==============================================================================
 # 💻 1. DYNAMIC PLATFORM DETECTION / 平台動態偵測與核心數配置
 # ==============================================================================
@@ -218,6 +233,42 @@ alias make1mb='mkfile 1M ./1MB.dat'
 alias make5mb='mkfile 5M ./5MB.dat'
 alias make10mb='mkfile 10M ./10MB.dat'
 
+# 快捷建立 RAM Disk 函數 / Quick RAM Disk Function
+function makeram() {
+    # 確保 /tmp/RAMDisk 存在以避免 hdiutil 錯誤 / Ensure /tmp/RAMDisk exists to prevent hdiutil errors
+    # 檢查是否已經掛載了相同名稱的 RAMDisk (檢查路徑是否存在)
+    if [ -e "/tmp/RAMDisk" ]; then
+        echo "[Warning] RAMDisk 正在掛載中 / RAMDisk is already mounted!"
+        echo "若有必須請先執行 / Please run: diskutil eject /Volumes/RAMDisk if necessary"
+        return 1
+    fi
+    touch /tmp/RAMDisk 2>/dev/null 
+    
+    local gb=${1:-2} # 預設 2GB / Default 2GB
+    local sectors=$(( gb * 1024 * 1024 * 1024 / 512 ))
+    
+    echo "正在建立 ${gb}GB 記憶體磁碟... / Allocating ${gb}GB RAM Disk..."
+    
+    # 1. 嘗試配置記憶體 / Attempt to attach memory
+    local dev
+    dev=$(hdiutil attach -nomount ram://$sectors | tr -d '[:space:]')
+    if [ $? -ne 0 ] || [ -z "$dev" ]; then
+        echo "[Error] 記憶體配置失敗！ / Failed to allocate memory via hdiutil!"
+        return 1
+    fi
+    
+    # 2. 嘗試建立 APFS 磁碟區 / Attempt to create APFS volume
+    if diskutil apfs create $dev RAMDisk > /dev/null; then
+        echo "成功！掛載點位於: /Volumes/RAMDisk / Success! Mounted at: /Volumes/RAMDisk"
+    else
+        echo "[Error] APFS 格式化失敗！ / Failed to format volume as APFS!"
+        # 額外防呆：如果格式化失敗，自動釋放剛剛配置成功的記憶體裝置
+        # Fallback: If format fails, automatically detach the allocated ram device
+        hdiutil detach "$dev" 2>/dev/null
+        return 1
+    fi
+}
+
 # ------------------------------------------------------------------------------
 # ALIAS: fsize
 # DESCRIPTION: Lists all files in the current directory, detailed with human-
@@ -226,6 +277,7 @@ alias make10mb='mkfile 10M ./10MB.dat'
 #          進行排序，且檔案大小會以易讀的單位（如 KB, MB）顯示。
 # ------------------------------------------------------------------------------
 alias fsize='ls -lh *(oL.)'
+alias dsize='du -sh'
 
 # ------------------------------------------------------------------------------
 # FUNCTION: trash()
@@ -254,10 +306,10 @@ trash () {
 extract () {
     if [ -f "$1" ] ; then
         case "$1" in
-            *.tar.lz4)   lz4 -d "$1" -c | tar xf - ;;
             *.tar.xz)    tar xf "$1"      ;;
             *.tar.bz2)   tar xjf "$1"     ;;
             *.tar.gz)    tar xzf "$1"     ;;
+            *.tgz)       tar xzf "$1"     ;;
             *.bz2)       bunzip2 "$1"     ;;
             *.rar)       unrar e "$1"     ;;
             *.gz)        gunzip "$1"      ;;
@@ -278,6 +330,25 @@ extract () {
     fi
 }
 
+
+function nanoTimeElapsed() {
+    zmodload zsh/datetime
+    local start_time end_time elapsed
+    # 擷取開始時間（秒.微秒浮點數） / Capture start time (Seconds.Microseconds float)
+    start_time=$EPOCHREALTIME
+    # 執行目標命令 / Execute target command
+    "$@"
+    end_time=$EPOCHREALTIME
+    
+    # 計算時間差並轉換為奈秒 (1 秒 = 1,000,000,000 奈秒)
+    # 使用 awk 處理浮點數運算以確保跨平台精確度
+    # Calculate time difference and convert to nanoseconds (1 sec = 1,000,000,000 ns)
+    # Use awk for floating-point math to ensure cross-platform precision
+    elapsed_ns=$(awk -v start="$start_time" -v end="$end_time" 'BEGIN { printf "%010.0f", (end - start) * 1000000000 }')
+    echo "==> Process $@ took: ${elapsed_ns} 奈秒/nanoseconds"
+}
+
+
 # ==============================================================================
 # 🗜️ PARALLEL LZ4 DIRECTORY COMPRESSION / 多核心 LZ4 目錄平行壓縮工具
 # ==============================================================================
@@ -292,71 +363,325 @@ extract () {
 #          'find -print0' 或 xargs 處理失敗的痛點。
 # ------------------------------------------------------------------------------
 function ffilter() {
-    sed -e "s/'/\\\'/g" -e 's/"/\\"/g' -e 's/ /\\ /g' 
+    sed -e "s/'/\\\'/g" -e 's/"/\\\"/g' -e 's/ /\\ /g' 
+}
+
+## This script helps to creat a tar.xz for a folder.
+function getar() {
+    XZ_OPT=-e9 tar czf "$1".tgz "$1"
+    du -sh $1
+    du -sh $1.tgz
 }
 
 # ------------------------------------------------------------------------------
 # FUNCTION: lz4a()
-# DESCRIPTION: Compresses a directory recursively using maximum LZ4 compression 
-#              (-9m) utilized across multiple CPU cores ($PACORES). It mirrors 
-#              the directory structure in a hidden '.lz4a' folder, archives it 
-#              into a '.lz4a' file, and compares the final sizes.
-# 功能描述：多核心平行資料夾壓縮。利用系統核心數（需預先設定 $PACORES 變數）
-#          平行調用 'lz4 -9m' 最高壓縮率，將指定資料夾內的檔案批次壓縮。
-#          過程中會暫存於隱藏的 '.lz4a' 目錄，最後打包為 '.lz4a' 封存檔
-#          並輸出前後的檔案大小對比。
+# DESCRIPTION: Compress a directory recursively using LZ4 with aggressive
+#              settings. Supports parallel per-file compression across CPU
+#              cores and a verbose mode.
+#
+#              Usage: lz4a [-v|--verbose] <directory>
+#
+#              Behavior: auto-detects cores from $PACORES (fallbacks to the
+#              system core count if unset), mirrors the directory tree into a
+#              temporary ".lz4a" folder (uses `rsync`), compresses files in
+#              parallel with `lz4` via `xargs`, then packages the results into
+#              "<directory>.lz4a". Prints a before/after size comparison and
+#              removes temporary files when complete.
+#
+# 功能描述：遞迴壓縮目錄，使用 LZ4（高壓縮設定），並支援多核心平行處理
+#          與詳細輸出選項（-v/--verbose）。
+#
+#          使用方式：lz4a [-v|--verbose] <目錄>
+#
+#          行為說明：若未設定 `$PACORES` 會自動偵測系統核心數；先以
+#          `rsync` 建立暫存目錄（.lz4a），接著以 `xargs` 並行呼叫 `lz4`
+#          對每一個檔案進行壓縮，最後打包成 "<目錄>.lz4a"，並輸出
+#          壓縮前後容量比較，完成後移除暫存檔。
 # ------------------------------------------------------------------------------
 function lz4a() {
-    find "$1" -type d -print0 | xargs -n 1 -P $PACORES -0 -I'{}' mkdir -p './.lz4a/{}'
-    find "$1" -type f | ffilter | xargs -n 1 -P $PACORES lz4 -9m
-    find "$1" -name '*.lz4' -print0 | xargs -n 1 -P $PACORES -0 -I'{}' mv '{}' './.lz4a/{}'
-    tar -cf "$1.lz4a" ".lz4a/$1" 
-    rm -rf .lz4a
-    du -sh "$1"
-    du -sh "$1.lz4a"
+    # 1. 關閉 Zsh 背景作業通知，維持畫面絕對乾淨 / Quiet background jobs
+    unsetopt NOTIFY MONITOR
+
+    local verbose=0
+    local target=""
+    local ramdisk="/Volumes/RAMDisk"
+
+    # 參數解析 / Parameter Parsing
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -v|--verbose) verbose=1; shift ;;
+            -*) 
+                echo "未知參數 / Unknown parameter: $1" >&2; 
+                setopt NOTIFY MONITOR # 退出前還原設定 / Set it back
+                return 1 
+                ;;
+            *) target="${1%/}"; shift ;;
+        esac
+    done
+
+    if [[ -z "$target" ]]; then
+        echo "錯誤: 請指定要壓縮的目錄 / Error: Please specify a directory to compress" >&2
+        setopt NOTIFY MONITOR     # 退出前還原設定 / Set it back
+        return 1
+    fi
+
+    # 2. 檢查記憶體磁碟與 2GB 容量限制 & 初始化 RAMDisk 暫存根目錄 / Check RAMDisk and 2GB Size Limit & Initialize RAMDisk Staging Root
+
+    if [ ! -d "$ramdisk" ]; then
+        echo "[Error] 錯誤：找不到記憶體磁碟！請先執行 'makeram' / Error: RAMDisk not found!" >&2
+        setopt NOTIFY MONITOR     # 退出前還原設定 / Set it back
+        return 1
+    fi
+    mkdir -p $ramdisk/.lz4a  # 建立新的暫存資料夾 / Create new staging folder
+
+    local folder_size_mb
+    folder_size_mb=$(du -sm "$target" | awk '{print $1}')
+    if (( folder_size_mb >= 2048 )); then
+        echo "[Error] 錯誤：資料夾大於 2GB，RAMDisk 空間不足！ / Error: Folder is >= 2GB, RAMDisk space insufficient!"
+        setopt NOTIFY MONITOR     # 退出前還原設定 / Set it back
+        return 1
+    fi
+
+    # 3. 自動偵測核心數 / Auto-detect CPU Cores
+    local cores=${PACORES}
+    # if [[ -z "$cores" ]]; then
+    #     if [[ "$(uname)" == "Darwin" ]]; then
+    #         cores=$(sysctl -n hw.ncpu)
+    #     else
+    #         cores=$(nproc)
+    #     fi
+    # fi
+
+    # 4. 使用 xargs 平行壓縮（動態確保輸出資料夾結構）
+    # Parallel Compression (On-demand mkdir for Output Directories)
+    if [[ $verbose -eq 1 ]]; then
+        echo "====> 開始處理目錄 / Starting processing directory: $target ($cores 核心 / cores) <===="
+        ## FASTER
+        find $target -type d -print0 | xargs -n 1 -P $cores -0 -I'{}' mkdir -p $ramdisk/.lz4a/'{}';
+        find $target -type f -print0 | xargs -n 1 -P $cores -0 -I '{}' sh -c '
+                lz4 -12 -q -f $1 /Volumes/RAMDisk/.lz4a/$1.lz4 
+        ' -- '{}'
+
+        ## SLOWER
+        # find $target \( -type d -exec mkdir -p $ramdisk/.lz4a/{} \; \) -o \( -type f -exec lz4 -12 -q -f {} /Volumes/RAMDisk/.lz4a/{}.lz4   \; \) 
+
+    else
+        # 安靜模式 / Quiet mode
+        ## FASTER
+        find $target -type d -print0 | xargs -n 1 -P $cores -0 -I'{}' mkdir -p $ramdisk/.lz4a/'{}';
+        find $target -type f -print0 | xargs -n 1 -P $cores -0 -I '{}' sh -c '
+                lz4 -12 -q -f $1 /Volumes/RAMDisk/.lz4a/$1.lz4 
+        ' -- '{}'
+
+        ## SLOWER
+        # find $target \( -type d -exec mkdir -p $ramdisk/.lz4a/{} \; \) -o \( -type f -exec lz4 -12 -q -f {} /Volumes/RAMDisk/.lz4a/{}.lz4   \; \) 
+    fi
+
+    # 5. 打包、清理與環境還原 / Tar Archiving from RAM & Reclaim Environment
+    if [[ $verbose -eq 1 ]]; then
+        tar -C "$ramdisk/.lz4a" -cvf "$target.lz4a" "$target"
+        echo "\n====> 壓縮前後容量對比 / Size Comparison <===="
+    else
+        tar -C "$ramdisk/.lz4a" -cf "$target.lz4a" "$target"
+    fi
+
+    rm -rf $ramdisk/.lz4a 2>/dev/null   # 清理舊的暫存資    料夾 / Clean up old staging folder if exists
+
+    # 6.顯示容量對比 / Size Benchmark
+    du -sh "$target"
+    du -sh "$target.lz4a"
+
+    # 【關鍵】正常執行完畢，手動將環境設定還原 / Set options back to default
+    setopt NOTIFY MONITOR
 }
+
+
+# NOTES: Requires `lz4`, `tar`, and `xargs`. The function creates a temporary
+# hidden `.lz4a` directory to store per-file compressed outputs before
+# packaging them into `$target.lz4a`. Ensure `$PACORES` (or `cores`) is set for
+# parallelism. Run on a writable filesystem and make sure `rsync` and `lz4`
+# are installed for best performance.
 
 # ------------------------------------------------------------------------------
 # FUNCTION: unlz4a()
 # DESCRIPTION: Decompresses a '.lz4a' archive created by lz4a(). It extracts 
 #              the tarball, multi-threads the unlz4 decompression across cores, 
 #              restores files back to their original paths, and cleans up.
-# 功能描述：多核心平行資料夾解壓縮。用來解開由 'lz4dir' 產生的 '.lz4a' 
-#          壓縮檔。首先解開 tar 結構，再透過多核心平行執行 'unlz4' 解壓並
-#          刪除來源隱藏檔（--rm），最後將檔案還原至當前目錄並清理暫存。
+#
+# 功能描述：多核心平行資料夾解壓縮。用來解開由 'lz4a' 產生的 '.lz4a' 
+#          壓縮檔。首先解開 tar 結構，再透過多核心平行執行 'lz4 -d' 解壓並
+#          刪除來源隱藏檔，最後將檔案還原至當前目錄並清理暫存。
 # ------------------------------------------------------------------------------
+
 function unlz4a() {
-    tar -xf "$1"
-    find .lz4a -type f | ffilter | xargs -n 1 -P $PACORES unlz4 -m --rm
-    mv .lz4a/* . 
-    rm -rf .lz4a
+    local verbose=0
+    local archive=""
+    local ramdisk="/Volumes/RAMDisk"
+
+    # 1. 參數解析 / Parameter Parsing
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -v|--verbose) verbose=1; shift ;;
+            -*) echo "未知參數 / Unknown parameter: $1" >&2; return 1 ;;
+            *) archive="$1"; shift ;;
+        esac
+    done
+
+    if [[ -z "$archive" ]]; then
+        echo "錯誤: 請指定要解開的 .lz4a 封存檔 / Error: Please specify a .lz4a archive to extract" >&2
+        return 1
+    fi
+
+    if [[ ! -f "$archive" ]]; then
+        echo "錯誤: 找不到檔案 / Error: File not found: $archive" >&2
+        return 1
+    fi
+
+    # 2. 自動偵測核心數 / Auto-detect CPU Cores (Linux & macOS)
+    local cores=${PACORES}
+    # if [[ -z "$cores" ]]; then
+    #     if [[ "$(uname)" == "Darwin" ]]; then
+    #         cores=$(sysctl -n hw.ncpu)
+    #     else
+    #         cores=$(nproc)
+    #     fi
+    # fi
+
+    # 取得原始目錄名稱 / Get original directory name (e.g., my_folder.lz4a -> my_folder)
+    local output_dir="$ramdisk/${archive%.lz4a}"
+
+    # 3. 核心優化步驟 / Core Optimization Steps
+    if [[ $verbose -eq 1 ]]; then
+        echo "====> 開始解封存 / Starting extraction: $archive ($cores 核心 / cores) <===="
+        # 【Verbose 模式 / Verbose Mode】
+        # 先利用 tar 快速建立原本的目錄結構 / Recreate directory structure quickly via tar
+        echo "正在還原目錄結構 / Restoring directory structure..."
+        # 建立一個乾淨的還原環境 / Create a clean restoration environment
+        mkdir -p "$output_dir"
+        
+        # 執行解壓與還原 / Perform extraction and path stripping
+        tar -xf "$archive" -C "$output_dir"
+        
+        # 多核心同時將 .lz4 解壓回原檔，並直接幹掉暫存的 .lz4 / Multi-threaded decompression and inline cleanup
+        find "$output_dir" -type f -name "*.lz4" | xargs -n 1 -P $cores -I '{}' sh -c '
+            lz4 -d  -f "$1" "${1%.lz4}" && rm -f "$1"
+        ' -- '{}'
+        echo "\n====> 解封存完成！已還原至目錄 / Extraction complete! Restored to: $output_dir <===="
+    else
+        # 【安靜/極速模式 / Quiet/Fast Mode】
+        # 建立一個乾淨的還原環境 / Create a clean restoration environment
+        mkdir -p "$output_dir"
+        
+        # 執行解壓與還原 / Perform extraction and path stripping
+        tar -xf "$archive" -C "$output_dir"
+        
+        # 多核心同時將 .lz4 解壓回原檔，並直接幹掉暫存的 .lz4 / Multi-threaded decompression and inline cleanup
+        find "$output_dir" -type f -name "*.lz4" | xargs -n 1 -P $cores -I '{}' sh -c '
+            lz4 -d -q -f "$1" "${1%.lz4}" && rm -f "$1"
+        ' -- '{}'
+    fi
+    du -sh "$output_dir"
+    cp -R "$output_dir/." .  # 將還原的內容移回當前目錄 / Move restored contents back to current directory => FASTER
+    # rsync -a "$output_dir/" .  # 將還原的內容移回當前目錄 / Move restored contents back to current directory => SLOWER
+    rm -rf "$output_dir"  # 清理 RAMDisk 上的暫存資料夾 / Clean up staging folder on RAMDisk
 }
 
-# ==============================================================================
-# 🚀 4. STARTUP SCRIPT MANAGEMENT (HOISTING) / 啟動腳本生命週期管理
-# ==============================================================================
+#
+# NOTES: `unlz4a` expects the archive to unpack into a `.lz4a` folder
+# structure. It uses `lz4 -d` to decompress files in parallel and removes 
+# intermediate `.lz4` files when successful. Ensure `lz4`, `tar`, and `xargs` 
+# are available and that you run this from the directory where you want the 
+# restored files to land.
+#
+# 備註：`unlz4a` 預期該封存檔解開時包含 `.lz4a` 的目錄夾層。它使用 `lz4 -d` 
+#      進行多核心平行解壓縮，並在成功後立即刪除過渡用的 `.lz4` 檔案。
+#      請確保系統中已安裝 `lz4`、`tar` 與 `xargs`，並在你想還原檔案的目標目錄下執行此指令。
+#
 
-# Executed immediately at the beginning of setup / 於配置開頭最先執行的基礎設定
-function START_UP@BEGIN() {
-    echo "[Info] Running boot scripts... / 正在執行初始引導腳本..."     
-    # Bind xargs to scale perfectly with system core threads / 平行化 xargs 執行緒動態綁定
-    alias xxargs="xargs -n 1 -P $PACORES"
-    alias sll=subl
+
+# ------------------------------------------------------------------------------
+# FUNCTION: lz4bench()
+# DESCRIPTION: Benchmarks and compares the performance (speed and execution time)
+#              between 'lz4a' and 'tgz' using precise 'date' timestamps.
+#
+# 功能描述：壓縮效能基準測試。利用 'date' 時間戳記精準計算並比較 'lz4a' 
+#          與 'tgz' 在壓縮與解壓縮時的實際總耗時（秒）。
+# ------------------------------------------------------------------------------
+function lz4bench() {
+    # 檢查是否輸入測試目標 / Check if input target is specified
+    if [[ -z "$1" ]]; then
+        echo "錯誤: 請指定要測試的目錄 / Error: Please specify a directory to benchmark" >&2
+        return 1
+    fi
+    echo $'[Info] 開始執行 tgz 與 lz4a 基準測試 / Starting benchmark for tgz and lz4a...\n'
+
+
+
+    # --------------------------------------------------------------------------
+    # 1.測試 getar 壓縮速度 / Test lz4a compression speed
+    # --------------------------------------------------------------------------
+    echo $'\n[Info] 測試 getar 壓縮 / Testing getar compression:'
+    nanoTimeElapsed getar $1
+
+    # --------------------------------------------------------------------------
+    # 1. 測試 lz4a 壓縮速度 / Test lz4a compression speed
+    # --------------------------------------------------------------------------
+    echo $'\n[Info] 測試 lz4a  壓縮 / Testing lz4a compression:'
+    nanoTimeElapsed lz4a $1
+
+
+    echo $'\n=================================================='
+    echo $'[Info] 開始評測解壓縮速度 / Benchmarking decompression score:'
+    echo $'=================================================='
+
+
+    # --------------------------------------------------------------------------
+    # 2. 測試 tgz 解壓速度 / Test tgz decompression speed
+    # --------------------------------------------------------------------------
+    mkdir -p ./xbenchTest/tgz  > /dev/null 2>&1
+    cp "$1.tgz" ./xbenchTest/tgz > /dev/null 2>&1
+    cd ./xbenchTest/tgz > /dev/null 2>&1
+    rm -rf $1 > /dev/null 2>&1
+
+    echo $'\n[Info] 測試 tgz 解壓 / Testing tgz extraction:'
+    echo nanoTimeElapsed extract $1.tgz
+    nanoTimeElapsed extract $1.tgz 
+    cd ../.. > /dev/null 2>&1
+
+    # --------------------------------------------------------------------------
+    # 2. 測試 lz4a 解壓速度 / Test lz4a decompression speed
+    # --------------------------------------------------------------------------
+    mkdir -p ./xbenchTest/lz4a > /dev/null 2>&1
+    cp $1.lz4a ./xbenchTest/lz4a > /dev/null 2>&1
+    cd ./xbenchTest/lz4a > /dev/null 2>&1
+    rm -rf $1 > /dev/null 2>&1
+    
+    echo $'\n[Info] 測試 unlz4a 解壓 / Testing unlz4a extraction:' 
+    echo nanoTimeElapsed unlz4a $1.lz4a
+    nanoTimeElapsed unlz4a $1.lz4a
+    cd ../.. > /dev/null 2>&1
+
+    # --------------------------------------------------------------------------
+    # 3. 環境環境清理 / Sandbox cleanup
+    # --------------------------------------------------------------------------
+    diff -rq ./xbenchTest/tgz/$1 ./xbenchTest/lz4a/$1 > /dev/null 2>&1 && echo $'\n[Success] 解壓後的內容完全一致！ / Decompressed contents are identical!' || echo $'\n[Warning] 解壓後的內容不一致！ / Decompressed contents differ!'
+    # rm -rf xbenchTest
+    
+    echo $'\n[Info] 基準測試完成！ / Benchmark finished!'
 }
 
 # Executed at the end of setup to finalize environment injection / 於配置末尾執行，完成最終環境導入
 function START_UP@END() {
-    # Silence missing boot functions to prevent execution noise
-    # 將未定義的基礎函式隱藏導向，防止產生不必要的終端機錯誤報錯
-    printlibs > /dev/null 2>&1
-    bootlibs >/dev/null 2>&1
     setcc          # Apply chosen toolchain setup / 導入選定的編譯器工具鏈
     cheditor vi > /dev/null # Fallback text editor to vi / 設定預設後備編輯器為 vi
     export MAKEJOBS="-j16"  # Parallel compilation limit / 限制平行編譯最大執行緒數
     alias cgrep="grep --color=always"
     # printenv       # Output environment map on terminal login / 登入時印出當前環境變數快照
+    makeram
+    diskutil list | grep "RAMDisk" -B4 | grep "/dev" | awk '{print $1}' | tail -n +2 | xargs -I {} diskutil eject {}
 }
 
-# Execute sequence / 依序觸發生命週期函式
-START_UP@BEGIN
 START_UP@END
+# NOTE: `START_UP@END` finalizes environment injection: it sets conservative
+# defaults (e.g., `MAKEJOBS`), applies `setcc`, and defines aliases used in
+# interactive shells. It is safe to re-run but should avoid heavy side-effects.
