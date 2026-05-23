@@ -459,7 +459,7 @@ function lz4a() {
         ## FASTER
         find $target -type d -print0 | xargs -n 1 -P $cores -0 -I'{}' mkdir -p $ramdisk/.lz4a/'{}';
         find $target -type f -print0 | xargs -n 1 -P $cores -0 -I '{}' sh -c '
-                lz4 -12 -q -f $1 /Volumes/RAMDisk/.lz4a/$1.lz4 
+                lz4 -T0 -12 -q -f $1 /Volumes/RAMDisk/.lz4a/$1.lz4 
         ' -- '{}'
 
         ## SLOWER
