@@ -19,9 +19,6 @@ export LoginDay=$(date +%F)
 # Executed immediately at the beginning of setup / 於配置開頭最先執行的基礎設定
 function START_UP@BEGIN() {
     echo "[Info] Running boot scripts... / 正在執行初始引導腳本..."     
-    # Bind xargs to scale perfectly with system core threads / 平行化 xargs 執行緒動態綁定
-    alias xxargs="xargs -n 1 -P $PACORES"
-    alias sll=subl
 }
 START_UP@BEGIN
 # NOTE: `START_UP@BEGIN` is invoked early during dotfiles loading. Keep it
@@ -306,6 +303,7 @@ trash () {
 extract () {
     if [ -f "$1" ] ; then
         case "$1" in
+            *.tar.lz4)   lz4 -T0 -d -q -c $1 | tar -xf - ;;
             *.tar.xz)    tar xf "$1"      ;;
             *.tar.bz2)   tar xjf "$1"     ;;
             *.tar.gz)    tar xzf "$1"     ;;
@@ -371,6 +369,13 @@ function getar() {
     XZ_OPT=-e9 tar czf "$1".tgz "$1"
     du -sh $1
     du -sh $1.tgz
+}
+
+function tarlz4() {
+    # tar -cf - $1 | lz4 -T0 -12 -q > $1.tar.lz4
+    tar --use-compress-program=lz4 -cf  $1.tar.lz4 $1
+    du -sh $1
+    du -sh $1.tar.lz4 
 }
 
 # ------------------------------------------------------------------------------
@@ -457,26 +462,32 @@ function lz4a() {
     if [[ $verbose -eq 1 ]]; then
         echo "====> 開始處理目錄 / Starting processing directory: $target ($cores 核心 / cores) <===="
         ## FASTER
-        find $target -type d -print0 | xargs -n 1 -P $cores -0 -I'{}' mkdir -p $ramdisk/.lz4a/'{}';
-        find $target -type f -print0 | xargs -n 1 -P $cores -0 -I '{}' sh -c '
-                lz4 -12 -q -f $1 /Volumes/RAMDisk/.lz4a/$1.lz4 
-        ' -- '{}'
+        find "$target" -type d -print0 | xargs -0 -n 1 -P "$cores" -I '{}' mkdir -p "$ramdisk/.lz4a/{}"
+        find "$target" -type f -print0 | xargs -0 -n 1 -P "$cores" -I '{}' sh -c '
+                    lz4 -T0 -12 -q -f "$1" "$2/.lz4a/${1}.lz4"
+                ' -- '{}' "$ramdisk"
 
         ## SLOWER
-        # find $target \( -type d -exec mkdir -p $ramdisk/.lz4a/{} \; \) -o \( -type f -exec lz4 -12 -q -f {} /Volumes/RAMDisk/.lz4a/{}.lz4   \; \) 
-
+        # find "$target" \
+        #             \( -type d -exec mkdir -p "$ramdisk/.lz4a/{}" \; \) \
+        #             -o \
+        #             \( -type f -exec sh -c 'lz4 -12 -q -f "{}" "'"$ramdisk"'/.lz4a/{}.lz4" ' _ {} \; \) 
     else
         # 安靜模式 / Quiet mode
         ## FASTER
-        find $target -type d -print0 | xargs -n 1 -P $cores -0 -I'{}' mkdir -p $ramdisk/.lz4a/'{}';
-        find $target -type f -print0 | xargs -n 1 -P $cores -0 -I '{}' sh -c '
-                lz4 -12 -q -f $1 /Volumes/RAMDisk/.lz4a/$1.lz4 
-        ' -- '{}'
+        find "$target" -type d -print0 | xargs -0 -n 1 -P "$cores" -I '{}' mkdir -p "$ramdisk/.lz4a/{}"
+        find "$target" -type f -print0 | xargs -0 -n 1 -P "$cores" -I '{}' sh -c '
+                    lz4 -T0 -12 -q -f "$1" "$2/.lz4a/${1}.lz4" 
+                ' -- '{}' "$ramdisk"
 
         ## SLOWER
-        # find $target \( -type d -exec mkdir -p $ramdisk/.lz4a/{} \; \) -o \( -type f -exec lz4 -12 -q -f {} /Volumes/RAMDisk/.lz4a/{}.lz4   \; \) 
-    fi
+        # find "$target" \
+        #             \( -type d -exec mkdir -p "$ramdisk/.lz4a/{}" \; \) \
+        #             -o \
+        #             \( -type f -exec sh -c 'lz4 -12 -q -f "{}" "'"$ramdisk"'/.lz4a/{}.lz4" ' _ {} \; \) 
 
+    fi
+    
     # 5. 打包、清理與環境還原 / Tar Archiving from RAM & Reclaim Environment
     if [[ $verbose -eq 1 ]]; then
         tar -C "$ramdisk/.lz4a" -cvf "$target.lz4a" "$target"
@@ -602,10 +613,10 @@ function unlz4a() {
 # ------------------------------------------------------------------------------
 # FUNCTION: lz4bench()
 # DESCRIPTION: Benchmarks and compares the performance (speed and execution time)
-#              between 'lz4a' and 'tgz' using precise 'date' timestamps.
+#              between 'lz4a','tgz', 'tarlz4' using precise 'date' timestamps.
 #
-# 功能描述：壓縮效能基準測試。利用 'date' 時間戳記精準計算並比較 'lz4a' 
-#          與 'tgz' 在壓縮與解壓縮時的實際總耗時（秒）。
+# 功能描述：壓縮效能基準測試。利用 'date' 時間戳記精準計算並比較 'lz4a' ,'tgz', 'tarlz4' 
+#        在壓縮與解壓縮過程中的實際耗時（秒）。
 # ------------------------------------------------------------------------------
 function lz4bench() {
     # 檢查是否輸入測試目標 / Check if input target is specified
@@ -613,9 +624,7 @@ function lz4bench() {
         echo "錯誤: 請指定要測試的目錄 / Error: Please specify a directory to benchmark" >&2
         return 1
     fi
-    echo $'[Info] 開始執行 tgz 與 lz4a 基準測試 / Starting benchmark for tgz and lz4a...\n'
-
-
+    echo $'[Info] 開始執行 tgz, lz4a, tarlz4 基準測試 / Starting benchmark for tgz, lz4a, tarlz4...\n'
 
     # --------------------------------------------------------------------------
     # 1.測試 getar 壓縮速度 / Test lz4a compression speed
@@ -629,6 +638,11 @@ function lz4bench() {
     echo $'\n[Info] 測試 lz4a  壓縮 / Testing lz4a compression:'
     nanoTimeElapsed lz4a $1
 
+    # --------------------------------------------------------------------------
+    # 1. 測試 tarlz4 壓縮速度 / Test lz4a compression speed
+    # --------------------------------------------------------------------------
+    echo $'\n[Info] 測試 tarlz4  壓縮 / Testing tarlz4 compression:'
+    nanoTimeElapsed tarlz4 $1
 
     echo $'\n=================================================='
     echo $'[Info] 開始評測解壓縮速度 / Benchmarking decompression score:'
@@ -662,9 +676,23 @@ function lz4bench() {
     cd ../.. > /dev/null 2>&1
 
     # --------------------------------------------------------------------------
+    # 2. 測試 tarlz4 解壓速度 / Test tarlz4 decompression speed
+    # --------------------------------------------------------------------------
+    mkdir -p ./xbenchTest/tarlz4 > /dev/null 2>&1
+    cp $1.tar.lz4 ./xbenchTest/tarlz4 > /dev/null 2>&1
+    cd ./xbenchTest/tarlz4 > /dev/null 2>&1
+    rm -rf $1 > /dev/null 2>&1
+    
+    echo $'\n[Info] 測試 tarlz4 解壓 / Testing tarlz4 extraction:' 
+    echo nanoTimeElapsed extract $1.tar.lz4
+    nanoTimeElapsed extract $1.tar.lz4
+    cd ../.. > /dev/null 2>&1
+
+    # --------------------------------------------------------------------------
     # 3. 環境環境清理 / Sandbox cleanup
     # --------------------------------------------------------------------------
-    diff -rq ./xbenchTest/tgz/$1 ./xbenchTest/lz4a/$1 > /dev/null 2>&1 && echo $'\n[Success] 解壓後的內容完全一致！ / Decompressed contents are identical!' || echo $'\n[Warning] 解壓後的內容不一致！ / Decompressed contents differ!'
+    diff -rq ./xbenchTest/tgz/$1 ./xbenchTest/lz4a/$1 > /dev/null 2>&1 && echo $'\n[Success] tgz,lz4a 解壓後的內容完全一致！ / Decompressed contents are identical!' || echo $'\n[Warning] tgz,lz4a  解壓後的內容不一致！ / tgz,lz4a Decompressed contents differ!'
+    diff -rq ./xbenchTest/tgz/$1 ./xbenchTest/tarlz4/$1 > /dev/null 2>&1 && echo $'\n[Success] tgz,tarlz4 解壓後的內容完全一致！ / Decompressed contents are identical!' || echo $'\n[Warning] tgz,tarlz4  解壓後的內容不一致！ / tgz,tarlz4 Decompressed contents differ!'
     # rm -rf xbenchTest
     
     echo $'\n[Info] 基準測試完成！ / Benchmark finished!'
@@ -672,6 +700,9 @@ function lz4bench() {
 
 # Executed at the end of setup to finalize environment injection / 於配置末尾執行，完成最終環境導入
 function START_UP@END() {
+    # Bind xargs to scale perfectly with system core threads / 平行化 xargs 執行緒動態綁定
+    alias xxargs="xargs -n 1 -P $PACORES"
+    alias sll=subl
     setcc          # Apply chosen toolchain setup / 導入選定的編譯器工具鏈
     cheditor vi > /dev/null # Fallback text editor to vi / 設定預設後備編輯器為 vi
     export MAKEJOBS="-j16"  # Parallel compilation limit / 限制平行編譯最大執行緒數
