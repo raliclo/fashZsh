@@ -9,7 +9,7 @@ export LoginDay=$(date +%F)
 
 # Authors / 核心作者 : 
 # [Ralic Lo (ralic.lo@gmail.com)
-# [NATHANIEL LANDAU] https://natelandau.com/nathaniel-landau-resume/
+# [NATHANIEL LANDAU] (https://natelandau.com/nathaniel-landaus-resume/)
 
 
 # ==============================================================================
