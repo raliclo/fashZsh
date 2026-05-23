@@ -235,12 +235,15 @@ alias make10mb='mkfile 10M ./10MB.dat'
 
 # 快捷建立 RAM Disk 函數 / Quick RAM Disk Function
 function makeram() {
-    # 檢查是否已經掛載了相同名稱的 RAMDisk / Check if RAMDisk is already mounted
-    if [ -d "/Volumes/RAMDisk" ]; then
+    # 確保 /tmp/RAMDisk 存在以避免 hdiutil 錯誤 / Ensure /tmp/RAMDisk exists to prevent hdiutil errors
+    # 檢查是否已經掛載了相同名稱的 RAMDisk (檢查路徑是否存在)
+    if [ -e "/tmp/RAMDisk" ]; then
         echo "[Warning] RAMDisk 正在掛載中 / RAMDisk is already mounted!"
-        echo "請先執行 / Please run: diskutil eject /Volumes/RAMDisk"
+        echo "若有必須請先執行 / Please run: diskutil eject /Volumes/RAMDisk if necessary"
         return 1
     fi
+    touch /tmp/RAMDisk 2>/dev/null 
+    
     local gb=${1:-2} # 預設 2GB / Default 2GB
     local sectors=$(( gb * 1024 * 1024 * 1024 / 512 ))
     
@@ -662,6 +665,7 @@ function START_UP@END() {
     alias cgrep="grep --color=always"
     # printenv       # Output environment map on terminal login / 登入時印出當前環境變數快照
     makeram
+    diskutil list | grep "RAMDisk" -B4 | grep "/dev" | awk '{print $1}' | tail -n +2 | xargs -I {} diskutil eject {}
 }
 
 START_UP@END
