@@ -12,17 +12,73 @@ export LoginDay=$(date +%F)
 # [NATHANIEL LANDAU] (https://natelandau.com/nathaniel-landaus-resume/)
 
 
-# ===========================================================================
+# ==============================================================================
 # 🚀 0. STARTUP SCRIPT MANAGEMENT (HOISTING) / 啟動腳本生命週期管理
 # ==============================================================================
 
 # Executed immediately at the beginning of setup / 於配置開頭最先執行的基礎設定
 function START_UP@BEGIN() {
+    local compl_dir="$HOME/.zsh/completions"
+
+    # 1. 確保補全目錄存在
+    if [[ ! -d "$compl_dir" ]]; then
+        echo "[Info] START_UP@BEGIN: Creating completions directory... / 正在建立補全目錄..."
+        mkdir -p "$compl_dir"
+    fi
+
+    # 2. 檢查指令存在，且當補全檔案「不存在」時才生成 
+    if (( $+commands[mistralrs] )) && [[ ! -f "$compl_dir/_mistralrs-server" ]]; then
+        echo "[Info] START_UP@BEGIN: Generating mistralrs Zsh completion script... / 正在生成 mistralrs 的 Zsh 補全腳本..."
+        mistralrs completions zsh > "$compl_dir/_mistralrs-server" 
+    fi
+
+    # 3. 驗證補全腳本是否成功生成
+    if [[ -f ~/.zsh/completions/_mistralrs-server ]]; then
+        echo "[Info] START_UP@BEGIN: Successfully generated mistralrs completion script."
+    fi
+
+    # 4. 將自訂補全路徑「提升」至 fpath 的最前端（避免被系統預設路徑蓋過）
+    if [[ -d "$compl_dir" ]]; then
+        fpath=("$compl_dir" $fpath)
+    fi
     echo "[Info] Running boot scripts... / 正在執行初始引導腳本..."     
+
+    # 4. 最後才點火啟動 Zsh 補全系統（此時 _mistralrs-server 已就緒）
+    autoload -Uz compinit && compinit
+
+    # 🎯 5. AUTOMATIC COMPLETED VERIFICATION & REPAIR / 自動補全驗證與修復機制    
+    # 使用 Zsh 原生關聯陣列語法檢查，速度極快且不產生額外進程
+    registered=$(echo $_comps[mistralrs])
+    if [[  registered -eq "_mistralrs-server" ]]; then
+        echo "[Info] START_UP@BEGIN: Successfully registered mistralrs completion function! / 已成功註冊 mistralrs 的補全功能！"
+    else
+        # 第一次沒抓到時，強制清除快取並重啟補全引擎（加入安全防護）
+        echo "[Warning] mistralrs completion not cached. Refreshing zcompdump... / 未偵測到 mistralrs 補全快取，正在強制重新整理..."
+        rm -f "$HOME/.zcompdump"*
+        autoload -Uz compinit && compinit -u 2>/dev/null        
+        # 再次確認修復結果
+        registered=$(echo $_comps[mistralrs])
+        if [[  registered -eq "_mistralrs-server" ]]; then
+            echo "[Info] START_UP@BEGIN: Successfully registered mistralrs after refresh! / 重新整理後已成功註冊 mistralrs 補全！"
+        else
+            echo "[Error] Failed to register mistralrs. Please check if the file exists in fpath. / 註冊失敗，請檢查檔案是否存在於 fpath 中。"
+        fi
+    fi
+
+    # ==============================================================================
+    # 🎯 COMPLETION BEHAVIOR CONFIGURATION / 補全行為進階優化
+    # ==============================================================================
+
+    # 1. 啟用進階補全選單：按 Tab 會出現可移動光標的清單，而不是直接跳到下一個資料夾
+    zstyle ':completion:*' menu select
+
+    # 2. 完美的補全載入順序：確保命令、參數、路徑同時被納入補全考量
+    zstyle ':completion:*' completer _expand _complete _ignored _approximate
+
+    # 3. 允許大小寫不敏感補全 (輸入小寫 mistralrs 也能補全大寫路徑/參數)
+    zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=*'
 }
-START_UP@BEGIN
-# NOTE: `START_UP@BEGIN` is invoked early during dotfiles loading. Keep it
-# lightweight and idempotent: register aliases and inexpensive bindings only.
+
 
 # ==============================================================================
 # 💻 1. DYNAMIC PLATFORM DETECTION / 平台動態偵測與核心數配置
@@ -65,6 +121,12 @@ fi
 
 # Set Homebrew optimization prefix / 設定 Homebrew 套件優化路徑字首
 export OPT_PREFIX="$BREW_PREFIX/opt" 
+
+# 執行引導，先準備好目錄與補全檔案
+START_UP@BEGIN
+
+# NOTE: `START_UP@BEGIN` is invoked early during dotfiles loading. Keep it
+# lightweight and idempotent: register aliases and inexpensive bindings only.
 
 
 # ==============================================================================
@@ -711,11 +773,10 @@ function START_UP@END() {
     # printenv       # Output environment map on terminal login / 登入時印出當前環境變數快照
     makeram
     diskutil list | grep "RAMDisk" -B4 | grep "/dev" | awk '{print $1}' | tail -n +2 | xargs -I {} diskutil eject {}
-    source ~/.hf_token 2>/dev/null
 }
 
 START_UP@END
+source ~/.hf_token
 # NOTE: `START_UP@END` finalizes environment injection: it sets conservative
 # defaults (e.g., `MAKEJOBS`), applies `setcc`, and defines aliases used in
 # interactive shells. It is safe to re-run but should avoid heavy side-effects.
-source ~/.hf_token
