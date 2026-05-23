@@ -8,7 +8,7 @@ export LC_ALL=en_US.UTF-8
 export LoginDay=$(date +%F)
 
 # Authors / 核心作者 : 
-# [Ralic Lo (ralic.lo.eng@ieee.org)
+# [Ralic Lo (ralic.lo@gmail.com)
 # [NATHANIEL LANDAU] https://natelandau.com/nathaniel-landau-resume/
 
 
@@ -20,6 +20,8 @@ export LoginDay=$(date +%F)
 if [ "$(uname -s)" = "Linux" ]; then
     # Linux: Parse /proc/cpuinfo to calculate hyper-threaded cores
     # Linux 環境：解析 /proc/cpuinfo 並將邏輯核心數乘以 2 以優化編譯
+    SETCC="gcc"
+    GCC_VER=15
     PACORES=$(grep -c ^processor /proc/cpuinfo)
     PACORES=$(( PACORES * 2 )) 
     UsrPATH="/home"
@@ -33,6 +35,8 @@ elif [ "$(uname -s)" = "Darwin" ]; then
     # macOS: Use sw_vers and sysctl for OS version and CPU cores
     # macOS 環境：使用 sw_vers 與 sysctl 取得系統版本與硬體核心數
     export MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion)
+    SETCC="gcc"
+    GCC_VER=15
     PACORES=$(sysctl -n hw.ncpu)
     PACORES=$(( PACORES * 2 ))
     UsrPATH="/Users"
@@ -154,14 +158,48 @@ export SUDO_PS=$PS1
 
 
 # ==============================================================================
+# 📂 DIRECTORY NAVIGATION ENHANCEMENTS / 目錄導覽功能增強
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# FUNCTION: cd()
+# DESCRIPTION: Overrides the built-in 'cd' to automatically save the previous 
+#              directory path ($prevfolder) before switching to the new one.
+#              (Tip: To always list directory contents upon 'cd', 'ls' can be added).
+# 功能描述：覆寫系統內建的 'cd' 指令。在切換至新目錄前，會自動將「當前路徑」
+#          暫存至 $prevfolder 變數中，以便進行來回快速切換。
+# ------------------------------------------------------------------------------
+cd() { 
+    prevfolder=$(pwd)
+    builtin cd "$@"
+    # If you want to automatically 'ls' after every 'cd', uncomment the line below:
+    ls ${COLOR_FLAG}
+} 
+
+# Record the initial login directory snapshot
+# 紀錄剛開啟終端機時的初始登入路徑快照
+termfolder=$(pwd)
+
+# ------------------------------------------------------------------------------
+# ALIASES: orig & prev
+# DESCRIPTION: Shortcuts for quick directory navigation.
+#              - orig: Instantly jump back to the terminal-login root directory.
+#              - prev: Toggle/switch back to the immediately preceding directory.
+# 別名設定：快速目錄導覽捷徑。
+#          - orig: 瞬間返回開啟此終端機視窗時的初始登入目錄。
+#          - prev: 在最近切換的兩個資料夾目錄之間，進行快速來回切換 (2017/07/30)。
+# ------------------------------------------------------------------------------
+alias orig='cd $termfolder' 
+alias prev='cd $prevfolder'
+
+
+# ==============================================================================
 # 🚀 4. STARTUP SCRIPT MANAGEMENT (HOISTING) / 啟動腳本生命週期管理
 # ==============================================================================
 
 # Executed immediately at the beginning of setup / 於配置開頭最先執行的基礎設定
 function START_UP@BEGIN() {
     echo "[Info] Running boot scripts... / 正在執行初始引導腳本..."     
-    SETCC="gcc"
-    GCC_VER=7
     # Bind xargs to scale perfectly with system core threads / 平行化 xargs 執行緒動態綁定
     alias xxargs="xargs -n 1 -P $PACORES"
     alias sll=subl
@@ -177,7 +215,7 @@ function START_UP@END() {
     cheditor vi > /dev/null # Fallback text editor to vi / 設定預設後備編輯器為 vi
     export MAKEJOBS="-j16"  # Parallel compilation limit / 限制平行編譯最大執行緒數
     alias cgrep="grep --color=always"
-    printenv       # Output environment map on terminal login / 登入時印出當前環境變數快照
+    # printenv       # Output environment map on terminal login / 登入時印出當前環境變數快照
 }
 
 # Execute sequence / 依序觸發生命週期函式
