@@ -19,9 +19,6 @@ export LoginDay=$(date +%F)
 # Executed immediately at the beginning of setup / 於配置開頭最先執行的基礎設定
 function START_UP@BEGIN() {
     echo "[Info] Running boot scripts... / 正在執行初始引導腳本..."     
-    # Bind xargs to scale perfectly with system core threads / 平行化 xargs 執行緒動態綁定
-    alias xxargs="xargs -n 1 -P $PACORES"
-    alias sll=subl
 }
 START_UP@BEGIN
 # NOTE: `START_UP@BEGIN` is invoked early during dotfiles loading. Keep it
@@ -457,26 +454,32 @@ function lz4a() {
     if [[ $verbose -eq 1 ]]; then
         echo "====> 開始處理目錄 / Starting processing directory: $target ($cores 核心 / cores) <===="
         ## FASTER
-        find $target -type d -print0 | xargs -n 1 -P $cores -0 -I'{}' mkdir -p $ramdisk/.lz4a/'{}';
-        find $target -type f -print0 | xargs -n 1 -P $cores -0 -I '{}' sh -c '
-                lz4 -T0 -12 -q -f $1 /Volumes/RAMDisk/.lz4a/$1.lz4 
-        ' -- '{}'
+        find "$target" -type d -print0 | xargs -0 -n 1 -P "$cores" -I '{}' mkdir -p "$ramdisk/.lz4a/{}"
+        find "$target" -type f -print0 | xargs -0 -n 1 -P "$cores" -I '{}' sh -c '
+                    lz4 -T0 -12 -q -f "$1" "$2/.lz4a/${1}.lz4"
+                ' -- '{}' "$ramdisk"
 
         ## SLOWER
-        # find $target \( -type d -exec mkdir -p $ramdisk/.lz4a/{} \; \) -o \( -type f -exec lz4 -12 -q -f {} /Volumes/RAMDisk/.lz4a/{}.lz4   \; \) 
-
+        # find "$target" \
+        #             \( -type d -exec mkdir -p "$ramdisk/.lz4a/{}" \; \) \
+        #             -o \
+        #             \( -type f -exec sh -c 'lz4 -12 -q -f "{}" "'"$ramdisk"'/.lz4a/{}.lz4" ' _ {} \; \) 
     else
         # 安靜模式 / Quiet mode
         ## FASTER
-        find $target -type d -print0 | xargs -n 1 -P $cores -0 -I'{}' mkdir -p $ramdisk/.lz4a/'{}';
-        find $target -type f -print0 | xargs -n 1 -P $cores -0 -I '{}' sh -c '
-                lz4 -12 -q -f $1 /Volumes/RAMDisk/.lz4a/$1.lz4 
-        ' -- '{}'
+        find "$target" -type d -print0 | xargs -0 -n 1 -P "$cores" -I '{}' mkdir -p "$ramdisk/.lz4a/{}"
+        find "$target" -type f -print0 | xargs -0 -n 1 -P "$cores" -I '{}' sh -c '
+                    lz4 -T0 -12 -q -f "$1" "$2/.lz4a/${1}.lz4" 
+                ' -- '{}' "$ramdisk"
 
         ## SLOWER
-        # find $target \( -type d -exec mkdir -p $ramdisk/.lz4a/{} \; \) -o \( -type f -exec lz4 -12 -q -f {} /Volumes/RAMDisk/.lz4a/{}.lz4   \; \) 
-    fi
+        # find "$target" \
+        #             \( -type d -exec mkdir -p "$ramdisk/.lz4a/{}" \; \) \
+        #             -o \
+        #             \( -type f -exec sh -c 'lz4 -12 -q -f "{}" "'"$ramdisk"'/.lz4a/{}.lz4" ' _ {} \; \) 
 
+    fi
+    
     # 5. 打包、清理與環境還原 / Tar Archiving from RAM & Reclaim Environment
     if [[ $verbose -eq 1 ]]; then
         tar -C "$ramdisk/.lz4a" -cvf "$target.lz4a" "$target"
@@ -672,6 +675,9 @@ function lz4bench() {
 
 # Executed at the end of setup to finalize environment injection / 於配置末尾執行，完成最終環境導入
 function START_UP@END() {
+    # Bind xargs to scale perfectly with system core threads / 平行化 xargs 執行緒動態綁定
+    alias xxargs="xargs -n 1 -P $PACORES"
+    alias sll=subl
     setcc          # Apply chosen toolchain setup / 導入選定的編譯器工具鏈
     cheditor vi > /dev/null # Fallback text editor to vi / 設定預設後備編輯器為 vi
     export MAKEJOBS="-j16"  # Parallel compilation limit / 限制平行編譯最大執行緒數
