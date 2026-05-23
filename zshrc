@@ -12,6 +12,21 @@ export LoginDay=$(date +%F)
 # [NATHANIEL LANDAU] (https://natelandau.com/nathaniel-landaus-resume/)
 
 
+# ===========================================================================
+# 🚀 0. STARTUP SCRIPT MANAGEMENT (HOISTING) / 啟動腳本生命週期管理
+# ==============================================================================
+
+# Executed immediately at the beginning of setup / 於配置開頭最先執行的基礎設定
+function START_UP@BEGIN() {
+    echo "[Info] Running boot scripts... / 正在執行初始引導腳本..."     
+    # Bind xargs to scale perfectly with system core threads / 平行化 xargs 執行緒動態綁定
+    alias xxargs="xargs -n 1 -P $PACORES"
+    alias sll=subl
+}
+START_UP@BEGIN
+# NOTE: `START_UP@BEGIN` is invoked early during dotfiles loading. Keep it
+# lightweight and idempotent: register aliases and inexpensive bindings only.
+
 # ==============================================================================
 # 💻 1. DYNAMIC PLATFORM DETECTION / 平台動態偵測與核心數配置
 # ==============================================================================
@@ -254,10 +269,10 @@ trash () {
 extract () {
     if [ -f "$1" ] ; then
         case "$1" in
-            *.tar.lz4)   lz4 -d "$1" -c | tar xf - ;;
             *.tar.xz)    tar xf "$1"      ;;
             *.tar.bz2)   tar xjf "$1"     ;;
             *.tar.gz)    tar xzf "$1"     ;;
+            *.tgz)       tar xzf "$1"     ;;
             *.bz2)       bunzip2 "$1"     ;;
             *.rar)       unrar e "$1"     ;;
             *.gz)        gunzip "$1"      ;;
@@ -292,21 +307,36 @@ extract () {
 #          'find -print0' 或 xargs 處理失敗的痛點。
 # ------------------------------------------------------------------------------
 function ffilter() {
-    sed -e "s/'/\\\'/g" -e 's/"/\\"/g' -e 's/ /\\ /g' 
+    sed -e "s/'/\\\'/g" -e 's/"/\\\"/g' -e 's/ /\\ /g' 
 }
 
 # ------------------------------------------------------------------------------
 # FUNCTION: lz4a()
-# DESCRIPTION: Compresses a directory recursively using maximum LZ4 compression 
-#              (-9m) utilized across multiple CPU cores ($PACORES). It mirrors 
-#              the directory structure in a hidden '.lz4a' folder, archives it 
-#              into a '.lz4a' file, and compares the final sizes.
-# 功能描述：多核心平行資料夾壓縮。利用系統核心數（需預先設定 $PACORES 變數）
-#          平行調用 'lz4 -9m' 最高壓縮率，將指定資料夾內的檔案批次壓縮。
-#          過程中會暫存於隱藏的 '.lz4a' 目錄，最後打包為 '.lz4a' 封存檔
-#          並輸出前後的檔案大小對比。
+# DESCRIPTION: Compress a directory recursively using LZ4 with aggressive
+#              settings. Supports parallel per-file compression across CPU
+#              cores and a verbose mode.
+#
+#              Usage: lz4a [-v|--verbose] <directory>
+#
+#              Behavior: auto-detects cores from $PACORES (fallbacks to the
+#              system core count if unset), mirrors the directory tree into a
+#              temporary ".lz4a" folder (uses `rsync`), compresses files in
+#              parallel with `lz4` via `xargs`, then packages the results into
+#              "<directory>.lz4a". Prints a before/after size comparison and
+#              removes temporary files when complete.
+#
+# 功能描述：遞迴壓縮目錄，使用 LZ4（高壓縮設定），並支援多核心平行處理
+#          與詳細輸出選項（-v/--verbose）。
+#
+#          使用方式：lz4a [-v|--verbose] <目錄>
+#
+#          行為說明：若未設定 `$PACORES` 會自動偵測系統核心數；先以
+#          `rsync` 建立暫存目錄（.lz4a），接著以 `xargs` 並行呼叫 `lz4`
+#          對每一個檔案進行壓縮，最後打包成 "<目錄>.lz4a"，並輸出
+#          壓縮前後容量比較，完成後移除暫存檔。
 # ------------------------------------------------------------------------------
-function lz4a() {
+
+function lz4a2() {
     find "$1" -type d -print0 | xargs -n 1 -P $PACORES -0 -I'{}' mkdir -p './.lz4a/{}'
     find "$1" -type f | ffilter | xargs -n 1 -P $PACORES lz4 -9m
     find "$1" -name '*.lz4' -print0 | xargs -n 1 -P $PACORES -0 -I'{}' mv '{}' './.lz4a/{}'
@@ -315,34 +345,272 @@ function lz4a() {
     du -sh "$1"
     du -sh "$1.lz4a"
 }
+function lz4a() {
+    local verbose=0
+    local target=""
+
+    # 1. 參數解析 / Parameter Parsing
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -v|--verbose) verbose=1; shift ;;
+            -*) echo "未知參數 / Unknown parameter: $1" >&2; return 1 ;;
+            *) target="${1%/}"; shift ;; # 移除結尾的 / 防止路徑拼接出錯 / Remove trailing slash to prevent path issues
+        esac
+    done
+
+    if [[ -z "$target" ]]; then
+        echo "錯誤: 請指定要壓縮的目錄 / Error: Please specify a directory to compress" >&2
+        return 1
+    fi
+
+    # 2. 自動偵測核心數 / Auto-detect CPU Cores (Linux & macOS)
+    # local cores=${PACORES}
+    # if [[ -z "$cores" ]]; then
+    #     if [[ "$(uname)" == "Darwin" ]]; then
+    #         cores=$(sysctl -n hw.ncpu)
+    #     else
+    #         cores=$(nproc)
+    #     fi
+    # fi
+
+
+    # 3. 建立基礎暫存目錄 / Create staging directory
+    mkdir -p "./.lz4a/$target"
+
+    # 4. 複製目錄結構 / Sync directory structure
+    # 利用 rsync 快修複製空目錄，省去 find + mkdir 的開銷 / Use rsync to clone empty directory structure quickly
+    rsync -a -f"+ */" -f"- *" "$target/" "./.lz4a/$target/"
+
+    # 5. 平行壓縮 / Parallel Compression
+    # 直接將檔案壓縮至目標暫存區，省去後續 mv 的 I/O / Compress directly into staging area to eliminate mv I/O
+    if [[ $verbose -eq 1 ]]; then
+        echo "====> 開始處理目錄 / Starting processing directory: $target ($PACORES 核心 / cores) <===="
+        find "$target" -type f | ffilter | xargs -n 1 -P $PACORES -I '{}' sh -c '
+            echo "正在壓縮 / Compressing: {}"
+            lz4 -9 -q "{}" "./.lz4a/{}.lz4"
+        '
+    else
+        # 安靜模式 / Quiet mode
+        find "$target" -type f | ffilter | xargs -n 1 -P $PACORES -I '{}' sh -c 'lz4 -9 -q "{}" "./.lz4a/{}.lz4"'
+    fi
+
+    # 6. 打包與清理 / Tar Archiving & Cleanup
+    if [[ $verbose -eq 1 ]]; then
+        tar -cvf "$target.lz4a" ".lz4a/$target"
+        echo "\n====> 壓縮前後容量對比 / Size Comparison <===="
+    else
+        tar -cf "$target.lz4a" ".lz4a/$target"
+    fi
+    
+    rm -rf .lz4a
+
+    # 7. 顯示容量對比 / Display Size Comparison
+    du -sh "$target"
+    du -sh "$target.lz4a"
+}
+
+## This script helps to creat a tar.xz for a folder.
+function getar() {
+    XZ_OPT=-e9 tar czf "$1".tgz "$1"
+    du -sh $1
+    du -sh $1.tgz
+}
+
+function nanoTimeElapsed() {
+    zmodload zsh/datetime
+    local start_time end_time elapsed
+    # 擷取開始時間（秒.微秒浮點數） / Capture start time (Seconds.Microseconds float)
+    start_time=$EPOCHREALTIME
+    # 執行目標命令 / Execute target command
+    "$@"
+    end_time=$EPOCHREALTIME
+    
+    # 計算時間差並轉換為奈秒 (1 秒 = 1,000,000,000 奈秒)
+    # 使用 awk 處理浮點數運算以確保跨平台精確度
+    # Calculate time difference and convert to nanoseconds (1 sec = 1,000,000,000 ns)
+    # Use awk for floating-point math to ensure cross-platform precision
+    elapsed_ns=$(awk -v start="$start_time" -v end="$end_time" 'BEGIN { printf "%.0f", (end - start) * 1000000000 }')
+    
+    echo "==> Process "$@" took: ${elapsed_ns} 奈秒/nanoseconds"
+}
+
+# ------------------------------------------------------------------------------
+# FUNCTION: lz4bench()
+# DESCRIPTION: Benchmarks and compares the performance (speed and execution time)
+#              between 'lz4a' and 'tgz' using precise 'date' timestamps.
+#
+# 功能描述：壓縮效能基準測試。利用 'date' 時間戳記精準計算並比較 'lz4a' 
+#          與 'tgz' 在壓縮與解壓縮時的實際總耗時（秒）。
+# ------------------------------------------------------------------------------
+function lz4bench() {
+    # 檢查是否輸入測試目標 / Check if input target is specified
+    if [[ -z "$1" ]]; then
+        echo "錯誤: 請指定要測試的目錄 / Error: Please specify a directory to benchmark" >&2
+        return 1
+    fi
+    echo $'[Info] 開始執行 tgz 與 lz4a 基準測試 / Starting benchmark for tgz and lz4a...\n'
+
+
+    # --------------------------------------------------------------------------
+    # 1. 測試 lz4a 壓縮速度 / Test lz4a compression speed
+    # --------------------------------------------------------------------------
+    echo $'\n[Info] 測試 lz4a 壓縮 / Testing lz4a compression:'
+    nanoTimeElapsed lz4a $1
+
+    # # --------------------------------------------------------------------------
+    # # 2. 測試 lz4a2 壓縮速度 / Test lz4a compression speed
+    # # --------------------------------------------------------------------------
+    # echo $'\n[Info] 測試 lz4a2 壓縮 / Testing lz4a2 compression:'
+    # nanoTimeElapsed lz4a2 $1
+
+    # --------------------------------------------------------------------------
+    # 3. 測試 getar 壓縮速度 / Test lz4a compression speed
+    # --------------------------------------------------------------------------
+    echo $'\n[Info] 測試 getar 壓縮 / Testing getar compression:'
+    nanoTimeElapsed getar $1
+
+    echo $'\n=================================================='
+    echo $'[Info] 開始評測解壓縮速度 / Benchmarking decompression score:'
+    echo $'=================================================='
+
+    # --------------------------------------------------------------------------
+    # 4. 測試 lz4a 解壓速度 / Test lz4a decompression speed
+    # --------------------------------------------------------------------------
+    mkdir -p ./xbenchTest/lz4a > /dev/null 2>&1
+    cp "$1.lz4a" ./xbenchTest/lz4a  > /dev/null 2>&1
+    cd ./xbenchTest/lz4a > /dev/null 2>&1
+    rm -rf $1 > /dev/null 2>&1
+
+    echo $'\n[Info] 測試 lz4a 解壓 / Testing lz4a extraction:' 
+    echo nanoTimeElapsed unlz4a $1.lz4a
+    nanoTimeElapsed unlz4a $1.lz4a
+    cd ../.. > /dev/null 2>&1
+
+    # --------------------------------------------------------------------------
+    # 5. 測試 tgz 解壓速度 / Test tgz decompression speed
+    # --------------------------------------------------------------------------
+    mkdir -p ./xbenchTest/tgz  > /dev/null 2>&1
+    cp "$1.tgz" ./xbenchTest/tgz > /dev/null 2>&1
+    cd ./xbenchTest/tgz > /dev/null 2>&1
+    rm -rf $1 > /dev/null 2>&1
+
+    echo $'\n[Info] 測試 tgz 解壓 / Testing tgz extraction:'
+    echo nanoTimeElapsed extract $1.tgz
+    nanoTimeElapsed extract $1.tgz 
+    # rm -rf $1 > /dev/null 2>&1
+    cd ../.. > /dev/null 2>&1
+    # --------------------------------------------------------------------------
+    # 6. 環境環境清理 / Sandbox cleanup
+    # --------------------------------------------------------------------------
+    diff -rq ./xbenchTest/tgz/$1 ./xbenchTest/lz4a/$1 > /dev/null 2>&1 && echo $'\n[Success] 解壓後的內容完全一致！ / Decompressed contents are identical!' || echo $'\n[Warning] 解壓後的內容不一致！ / Decompressed contents differ!'
+    # rm -rf xbenchTest
+    
+    echo $'\n[Info] 基準測試完成！ / Benchmark finished!'
+}
+
+# NOTES: Requires `lz4`, `tar`, and `xargs`. The function creates a temporary
+# hidden `.lz4a` directory to store per-file compressed outputs before
+# packaging them into `$target.lz4a`. Ensure `$PACORES` (or `cores`) is set for
+# parallelism. Run on a writable filesystem and make sure `rsync` and `lz4`
+# are installed for best performance.
 
 # ------------------------------------------------------------------------------
 # FUNCTION: unlz4a()
 # DESCRIPTION: Decompresses a '.lz4a' archive created by lz4a(). It extracts 
 #              the tarball, multi-threads the unlz4 decompression across cores, 
 #              restores files back to their original paths, and cleans up.
-# 功能描述：多核心平行資料夾解壓縮。用來解開由 'lz4dir' 產生的 '.lz4a' 
-#          壓縮檔。首先解開 tar 結構，再透過多核心平行執行 'unlz4' 解壓並
-#          刪除來源隱藏檔（--rm），最後將檔案還原至當前目錄並清理暫存。
+#
+# 功能描述：多核心平行資料夾解壓縮。用來解開由 'lz4a' 產生的 '.lz4a' 
+#          壓縮檔。首先解開 tar 結構，再透過多核心平行執行 'lz4 -d' 解壓並
+#          刪除來源隱藏檔，最後將檔案還原至當前目錄並清理暫存。
 # ------------------------------------------------------------------------------
-function unlz4a() {
+function unlz4a2() {
     tar -xf "$1"
     find .lz4a -type f | ffilter | xargs -n 1 -P $PACORES unlz4 -m --rm
     mv .lz4a/* . 
     rm -rf .lz4a
 }
 
-# ==============================================================================
-# 🚀 4. STARTUP SCRIPT MANAGEMENT (HOISTING) / 啟動腳本生命週期管理
-# ==============================================================================
+function unlz4a() {
+    local verbose=0
+    local archive=""
 
-# Executed immediately at the beginning of setup / 於配置開頭最先執行的基礎設定
-function START_UP@BEGIN() {
-    echo "[Info] Running boot scripts... / 正在執行初始引導腳本..."     
-    # Bind xargs to scale perfectly with system core threads / 平行化 xargs 執行緒動態綁定
-    alias xxargs="xargs -n 1 -P $PACORES"
-    alias sll=subl
+    # 1. 參數解析 / Parameter Parsing
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -v|--verbose) verbose=1; shift ;;
+            -*) echo "未知參數 / Unknown parameter: $1" >&2; return 1 ;;
+            *) archive="$1"; shift ;;
+        esac
+    done
+
+    if [[ -z "$archive" ]]; then
+        echo "錯誤: 請指定要解開的 .lz4a 封存檔 / Error: Please specify a .lz4a archive to extract" >&2
+        return 1
+    fi
+
+    if [[ ! -f "$archive" ]]; then
+        echo "錯誤: 找不到檔案 / Error: File not found: $archive" >&2
+        return 1
+    fi
+
+    # 2. 自動偵測核心數 / Auto-detect CPU Cores (Linux & macOS)
+    local cores=${PACORES}
+    # if [[ -z "$cores" ]]; then
+    #     if [[ "$(uname)" == "Darwin" ]]; then
+    #         cores=$(sysctl -n hw.ncpu)
+    #     else
+    #         cores=$(nproc)
+    #     fi
+    # fi
+
+    # 取得原始目錄名稱 / Get original directory name (e.g., my_folder.lz4a -> my_folder)
+    local output_dir="${archive%.lz4a}"
+
+
+    # 3. 核心優化步驟 / Core Optimization Steps
+    if [[ $verbose -eq 1 ]]; then
+        echo "====> 開始解封存 / Starting extraction: $archive ($cores 核心 / cores) <===="
+        # 【Verbose 模式 / Verbose Mode】
+        # 先利用 tar 快速建立原本的目錄結構 / Recreate directory structure quickly via tar
+        echo "正在還原目錄結構 / Restoring directory structure..."
+        tar -xf "$archive" --strip-components=1 --wildcards '*/' 2>/dev/null || \
+        tar -xf "$archive" --strip-components=1 2>/dev/null # 確保跨平台相容 / Ensure cross-platform compatibility
+        
+        # 尋找所有 .lz4 檔案進行多核心平行解壓，直接去掉 .lz4 副檔名落地 / Find all .lz4 files and decompress in parallel
+        find "$output_dir" -type f -name "*.lz4" | xargs -n 1 -P $cores -I '{}' sh -c '
+            out="${1%.lz4}"
+            echo "正在解壓 / Decompressing: $out"
+            lz4 -d -q -f "$1" "$out" && rm -f "$1"
+        ' -- '{}'
+    else
+        # 【安靜/極速模式 / Quiet/Fast Mode】
+        # 建立一個乾淨的還原環境 / Create a clean restoration environment
+        mkdir -p "$output_dir"
+        
+        # 執行解壓與還原 / Perform extraction and path stripping
+        tar -xf "$archive" --strip-components=1
+        
+        # 多核心同時將 .lz4 解壓回原檔，並直接幹掉暫存的 .lz4 / Multi-threaded decompression and inline cleanup
+        find "$output_dir" -type f -name "*.lz4" | xargs -n 1 -P $cores -I '{}' sh -c '
+            lz4 -d -q -f "$1" "${1%.lz4}" && rm -f "$1"
+        ' -- '{}'
+        echo "\n====> 解封存完成！已還原至目錄 / Extraction complete! Restored to: $output_dir <===="
+    fi
+
+    du -sh "$output_dir"
 }
+#
+# NOTES: `unlz4a` expects the archive to unpack into a `.lz4a` folder
+# structure. It uses `lz4 -d` to decompress files in parallel and removes 
+# intermediate `.lz4` files when successful. Ensure `lz4`, `tar`, and `xargs` 
+# are available and that you run this from the directory where you want the 
+# restored files to land.
+#
+# 備註：`unlz4a` 預期該封存檔解開時包含 `.lz4a` 的目錄夾層。它使用 `lz4 -d` 
+#      進行多核心平行解壓縮，並在成功後立即刪除過渡用的 `.lz4` 檔案。
+#      請確保系統中已安裝 `lz4`、`tar` 與 `xargs`，並在你想還原檔案的目標目錄下執行此指令。
+#
 
 # Executed at the end of setup to finalize environment injection / 於配置末尾執行，完成最終環境導入
 function START_UP@END() {
@@ -357,6 +625,9 @@ function START_UP@END() {
     # printenv       # Output environment map on terminal login / 登入時印出當前環境變數快照
 }
 
-# Execute sequence / 依序觸發生命週期函式
-START_UP@BEGIN
 START_UP@END
+# NOTE: `START_UP@END` finalizes environment injection: it sets conservative
+# defaults (e.g., `MAKEJOBS`), applies `setcc`, and defines aliases used in
+# interactive shells. It is safe to re-run but should avoid heavy side-effects.
+
+
