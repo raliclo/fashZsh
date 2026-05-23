@@ -79,6 +79,58 @@ cheditor nano     # 將預設編輯器切換為 nano
 * `lz4a` : 透過系統核心數 `$PACORES` 並行壓縮資料夾，使用最高 LZ4 壓縮率 `-9m`，輸出 `.lz4a` 封存檔，並顯示壓縮前後大小對比。
 * `unlz4a` : 解開 `.lz4a` 封存檔，還原原始資料夾結構，並清理暫存檔案。
 
+### 🔬 `lz4bench` — 平行 LZ4 基準測試
+* **用途**：執行完整的壓縮與解壓基準測試，比較 `tgz`、`lz4a` 與 `tarlz4` 的效能（使用高解析度時間戳記）。該函式會在完成後檢查解壓內容的一致性。
+* **用法**：`lz4bench <資料夾名稱>` — 傳入資料夾的基礎名稱（腳本預期存在對應的 `<name>.tgz`、`<name>.lz4a`、`<name>.tar.lz4` 封存檔）。
+* **輸出**：列印每個步驟的耗時以及完整性檢查。範例輸出（示例 — 結果會依機器與資料集不同而變化）：
+
+```
+## Note , this result is based on Mac Mini M4 16GB RAM, 10-core CPU, the best results is using tarlz4 and extract.
+
+[Info] 開始執行 tgz 與 lz4a 基準測試 / Starting benchmark for tgz and lz4a...
+
+
+[Info] 測試 getar 壓縮 / Testing getar compression:
+428K	fastBash
+200K	fastBash.tgz
+==> Process getar fastBash took: 0039450169 奈秒/nanoseconds
+
+[Info] 測試 lz4a  壓縮 / Testing lz4a compression:
+428K	fastBash
+264K	fastBash.lz4a
+==> Process lz4a fastBash took: 0067592144 奈秒/nanoseconds
+
+[Info] 測試 tarlz4  壓縮 / Testing tarlz4 compression:
+428K	fastBash
+264K	fastBash.tar.lz4
+==> Process tarlz4 fastBash took: 0011141062 奈秒/nanoseconds
+
+==================================================
+[Info] 開始評測解壓縮速度 / Benchmarking decompression score:
+==================================================
+
+[Info] 測試 tgz 解壓 / Testing tgz extraction:
+nanoTimeElapsed extract fastBash.tgz
+==> Process extract fastBash.tgz took: 0007292032 奈秒/nanoseconds
+
+[Info] 測試 unlz4a 解壓 / Testing unlz4a extraction:
+nanoTimeElapsed unlz4a fastBash.lz4a
+428K	/Volumes/RAMDisk/fastBash
+==> Process unlz4a fastBash.lz4a took: 0063432932 奈秒/nanoseconds
+
+[Info] 測試 tarlz4 解壓 / Testing tarlz4 extraction:
+nanoTimeElapsed extract fastBash.tar.lz4
+==> Process extract fastBash.tar.lz4 took: 0008643150 奈秒/nanoseconds
+
+[Success] tgz,lz4a 解壓後的內容完全一致！ / Decompressed contents are identical!
+
+[Success] tgz,tarlz4 解壓後的內容完全一致！ / Decompressed contents are identical!
+
+[Info] 基準測試完成！ / Benchmark finished!
+```
+
+提示：為了獲得有意義的基準結果，請在代表性的資料集上執行 `lz4bench`，並確保系統已安裝 `lz4`、`tar` 與 `xargs`。效能數據會依 CPU、I/O 與資料可壓縮性而不同。
+
 ## 🚀 啟動腳本與環境引導
 * `START_UP@BEGIN` 與 `START_UP@END` 為 shell 啟動期間的生命週期函式，負責初始化別名與最終環境導入。
 * `xxargs` 被別名為 `xargs -n 1 -P $PACORES`，讓管道運算具備平行處理效能。
