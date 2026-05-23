@@ -83,14 +83,14 @@ cheditor nano     # Switch default editor to nano
 * `unlz4a` : Decompresses a `.lz4a` archive, restores the original directory structure, and cleans up temporary files.
 
 ### 🔬 `lz4bench` — Parallel LZ4 benchmark
-* **Purpose**: Run end-to-end compression and decompression benchmarks that compare `tgz`, `lz4a` and `tarlz4` workflows using high-resolution timestamps. The function verifies correctness by checking that decompressed contents are identical.
+* **Purpose**: Run end-to-end compression and decompression benchmarks that compare `tgz`, `lz4a` and `tlz4` workflows using high-resolution timestamps. The function verifies correctness by checking that decompressed contents are identical.
 * **Usage**: `lz4bench <directory-name>` — pass the base directory name (the script expects matching archives like `<name>.tgz`, `<name>.lz4a`, `<name>.tar.lz4`).
 * **Output**: Prints per-step timing for compression and extraction, plus integrity checks. Sample output (example — results will vary by machine and dataset):
 
 ```
-## Note , this result is based on Mac Mini M4 16GB RAM, 10-core CPU, the best results is using tarlz4 and extract.
+## Note , this result is based on Mac Mini M4 16GB RAM, 10-core CPU, the best results is using tlz4 and extract.
 
-[Info] 開始執行 tgz, lz4a, tarlz4 基準測試 / Starting benchmark for tgz, lz4a, tarlz4...
+[Info] 開始執行 tgz, lz4a, tlz4 基準測試 / Starting benchmark for tgz, lz4a, tlz4...
 
 
 [Info] 測試 getar 壓縮 / Testing getar compression:
@@ -103,10 +103,10 @@ cheditor nano     # Switch default editor to nano
 224M	proj.lz4a
 ==> Process lz4a proj took: 2215111017 奈秒/nanoseconds
 
-[Info] 測試 tarlz4  壓縮 / Testing tarlz4 compression:
+[Info] 測試 tlz4  壓縮 / Testing tlz4 compression:
 234M	proj
 220M	proj.tar.lz4
-==> Process tarlz4 proj took: 0252645016 奈秒/nanoseconds
+==> Process tlz4 proj took: 0252645016 奈秒/nanoseconds
 
 ==================================================
 [Info] 開始評測解壓縮速度 / Benchmarking decompression score:
@@ -121,13 +121,13 @@ nanoTimeElapsed unlz4a proj.lz4a
 234M	/Volumes/RAMDisk/proj
 ==> Process unlz4a proj.lz4a took: 2128637075 奈秒/nanoseconds
 
-[Info] 測試 tarlz4 解壓 / Testing tarlz4 extraction:
+[Info] 測試 tlz4 解壓 / Testing tlz4 extraction:
 nanoTimeElapsed extract proj.tar.lz4
 ==> Process extract proj.tar.lz4 took: 0295735121 奈秒/nanoseconds
 
 [Success] tgz,lz4a 解壓後的內容完全一致！ / Decompressed contents are identical!
 
-[Success] tgz,tarlz4 解壓後的內容完全一致！ / Decompressed contents are identical!
+[Success] tgz,tlz4 解壓後的內容完全一致！ / Decompressed contents are identical!
 
 [Info] 基準測試完成！ / Benchmark finished!
 ```
