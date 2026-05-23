@@ -761,6 +761,45 @@ function lz4bench() {
     echo $'\n[Info] 基準測試完成！ / Benchmark finished!'
 }
 
+
+function claudeCodeEnv(){
+    # 1. 將 API 導向你的本地 llama-server
+    export ANTHROPIC_BASE_URL="http://127.0.0.1:8080"
+
+    # 2. 本地不需要真正的 Key，隨便填一個偽裝字串即可
+    export ANTHROPIC_API_KEY="JesusLoveYou"
+
+    # 3. 覆蓋 Claude Code 的預設模型別名（強迫它對應到你的本地模型）
+    export ANTHROPIC_DEFAULT_SONNET_MODEL="gemma-4"
+    export ANTHROPIC_DEFAULT_HAIKU_MODEL="gemma-4"
+    export ANTHROPIC_DEFAULT_OPUS_MODEL="gemma-4"
+    export CLAUDE_CODE_SUBAGENT_MODEL="gemma-4"
+    # 4. 如果你的代理/後端支援工具呼叫，開啟 MCP 工具搜尋（本地實驗性功能）
+    export ENABLE_TOOL_SEARCH=true
+    # 5. 確保目標資料夾存在
+    mkdir -p ~/.claude
+
+    # 6. 使用 tee 寫入 JSON
+cat << 'EOF' | tee ~/.claude/settings.json
+{
+"env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8080",
+    "ANTHROPIC_API_KEY": "JesusLoveYou",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "gemma-4",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "gemma-4",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "gemma-4",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "gemma-4"
+    },
+  "theme": "dark"
+}
+EOF
+
+}
+
+function gemma4(){
+    claude --model gemma-4
+}
+
 # Executed at the end of setup to finalize environment injection / 於配置末尾執行，完成最終環境導入
 function START_UP@END() {
     # Bind xargs to scale perfectly with system core threads / 平行化 xargs 執行緒動態綁定
@@ -773,10 +812,12 @@ function START_UP@END() {
     # printenv       # Output environment map on terminal login / 登入時印出當前環境變數快照
     makeram
     diskutil list | grep "RAMDisk" -B4 | grep "/dev" | awk '{print $1}' | tail -n +2 | xargs -I {} diskutil eject {}
+    claudeCodeEnv 2>&1 > /dev/null
 }
 
 START_UP@END
 source ~/.hf_token
+
 # NOTE: `START_UP@END` finalizes environment injection: it sets conservative
 # defaults (e.g., `MAKEJOBS`), applies `setcc`, and defines aliases used in
 # interactive shells. It is safe to re-run but should avoid heavy side-effects.
