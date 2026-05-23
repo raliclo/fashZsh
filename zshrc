@@ -413,6 +413,7 @@ function lz4a() {
 
     local verbose=0
     local target=""
+    local ramdisk="/Volumes/RAMDisk"
 
     # 參數解析 / Parameter Parsing
     while [[ $# -gt 0 ]]; do
@@ -435,7 +436,6 @@ function lz4a() {
 
     # 2. 檢查記憶體磁碟與 2GB 容量限制 & 初始化 RAMDisk 暫存根目錄 / Check RAMDisk and 2GB Size Limit & Initialize RAMDisk Staging Root
 
-    ramdisk="/Volumes/RAMDisk"
     if [ ! -d "$ramdisk" ]; then
         echo "[Error] 錯誤：找不到記憶體磁碟！請先執行 'makeram' / Error: RAMDisk not found!" >&2
         setopt NOTIFY MONITOR     # 退出前還原設定 / Set it back
@@ -515,6 +515,7 @@ function lz4a() {
 function unlz4a() {
     local verbose=0
     local archive=""
+    local ramdisk="/Volumes/RAMDisk"
 
     # 1. 參數解析 / Parameter Parsing
     while [[ $# -gt 0 ]]; do
@@ -546,8 +547,7 @@ function unlz4a() {
     # fi
 
     # 取得原始目錄名稱 / Get original directory name (e.g., my_folder.lz4a -> my_folder)
-    local output_dir="${archive%.lz4a}"
-
+    local output_dir="$ramdisk/${archive%.lz4a}"
 
     # 3. 核心優化步驟 / Core Optimization Steps
     if [[ $verbose -eq 1 ]]; then
@@ -555,7 +555,16 @@ function unlz4a() {
         # 【Verbose 模式 / Verbose Mode】
         # 先利用 tar 快速建立原本的目錄結構 / Recreate directory structure quickly via tar
         echo "正在還原目錄結構 / Restoring directory structure..."
-
+        # 建立一個乾淨的還原環境 / Create a clean restoration environment
+        mkdir -p "$output_dir"
+        
+        # 執行解壓與還原 / Perform extraction and path stripping
+        tar -xf "$archive" -C "$output_dir"
+        
+        # 多核心同時將 .lz4 解壓回原檔，並直接幹掉暫存的 .lz4 / Multi-threaded decompression and inline cleanup
+        find "$output_dir" -type f -name "*.lz4" | xargs -n 1 -P $cores -I '{}' sh -c '
+            lz4 -d  -f "$1" "${1%.lz4}" && rm -f "$1"
+        ' -- '{}'
         echo "\n====> 解封存完成！已還原至目錄 / Extraction complete! Restored to: $output_dir <===="
     else
         # 【安靜/極速模式 / Quiet/Fast Mode】
@@ -563,16 +572,17 @@ function unlz4a() {
         mkdir -p "$output_dir"
         
         # 執行解壓與還原 / Perform extraction and path stripping
-        tar -xf "$archive" 
+        tar -xf "$archive" -C "$output_dir"
         
         # 多核心同時將 .lz4 解壓回原檔，並直接幹掉暫存的 .lz4 / Multi-threaded decompression and inline cleanup
         find "$output_dir" -type f -name "*.lz4" | xargs -n 1 -P $cores -I '{}' sh -c '
             lz4 -d -q -f "$1" "${1%.lz4}" && rm -f "$1"
         ' -- '{}'
-
     fi
-
     du -sh "$output_dir"
+    cp -R "$output_dir/." .  # 將還原的內容移回當前目錄 / Move restored contents back to current directory => FASTER
+    # rsync -a "$output_dir/" .  # 將還原的內容移回當前目錄 / Move restored contents back to current directory => SLOWER
+    rm -rf "$output_dir"  # 清理 RAMDisk 上的暫存資料夾 / Clean up staging folder on RAMDisk
 }
 
 #
