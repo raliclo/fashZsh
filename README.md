@@ -48,12 +48,19 @@ source ~/.zshrc
 
 ## 🔧 Utility Functions & Aliases
 
-### Common Aliases
-* `f` : *(macOS only)* Instantly open the current terminal directory in a Finder window.
-* `sll` : Quick-launch/open files and folders using Sublime Text.
-* `cgrep` : Force-enables color highlights on all `grep` search results.
-* `xxargs` : Dynamically binds a parallelized `xargs` utility utilizing your system's maximum hardware thread capacity (`xargs -n 1 -P $PACORES`).
-* `make` : Leverages lazy evaluation to automatically scale with your parallelism configuration (`make $MAKEJOBS`).
+### 📂 Directory Navigation Enhancements
+* `cd()` : Overrides the built-in `cd` command to automatically cache the path of your last directory into a global `$prevfolder` variable before switching locations.
+* `prev` : Toggles or instantly switches back to the immediately preceding directory path (`$prevfolder`) — perfect for snapping back and forth between two active project folders.
+* `orig` : Instantly jumps back to the terminal-login root directory captured when the session was first initialized (`$termfolder`).
+
+---
+
+### 🛠️ Common Core Aliases
+* `f` : *(macOS only)* Instantly open the current terminal working directory inside a graphical Finder window.
+* `sll` : Quick-launch or open targeted files and folders using Sublime Text.
+* `cgrep` : Force-enables standard color syntax highlighting on all pipeline `grep` search results.
+* `xxargs` : Dynamically binds a parallelized `xargs` pipeline utilizing your system's maximum hardware thread capacity (`xargs -n 1 -P $PACORES`).
+* `make` : Leverages lazy evaluation to automatically scale with your parallelism thread limit flags (`make $MAKEJOBS`).
 
 ### Changing the Default Terminal Editor
 Use the `cheditor` function to quickly update your `$EDITOR` environment variable:
