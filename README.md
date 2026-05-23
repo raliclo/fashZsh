@@ -70,7 +70,27 @@ cheditor vi       # Switch default editor to vi
 cheditor nano     # Switch default editor to nano
 ```
 
-## 👥 Authors & Acknowledgments
+## � File and Folder Utilities
+* `nofiles` : Counts non-hidden files in the current directory using efficient Zsh glob modifiers.
+* `make1mb`, `make5mb`, `make10mb` : Creates dummy files sized 1MB, 5MB, or 10MB using macOS `mkfile`.
+* `fsize` : Lists files in the current directory with human-readable sizes, sorted from largest to smallest.
+* `trash` : Safely moves files or directories to `~/.Trash` instead of deleting them permanently.
+* `extract` : Smartly extracts a wide range of archive formats from a single command, including `.tar.gz`, `.zip`, `.7z`, `.xz`, `.rar`, `.lz4`, and more.
+
+## 🧩 Parallel Compression & Decompression
+* `ffilter` : Escapes spaces and quotes in file paths from stdin, making path-safe `xargs` pipelines reliable.
+* `lz4a` : Compresses a directory recursively with maximum LZ4 compression (`-9m`) across multiple cores using `$PACORES`, packages results into a `.lz4a` archive, and compares size before/after.
+* `unlz4a` : Decompresses a `.lz4a` archive, restores the original directory structure, and cleans up temporary files.
+
+## 🚀 Startup Script & Environment Boot
+* `START_UP@BEGIN` and `START_UP@END` are lifecycle hooks that execute during shell startup to initialize aliases and finalize environment injection.
+* `xxargs` is aliased to `xargs -n 1 -P $PACORES` for parallel pipelines.
+* `sll` is aliased to `subl` for quickly opening files in Sublime Text.
+* `cgrep` is aliased to `grep --color=always` to ensure colored search results in pipelines.
+* `MAKEJOBS` is initialized to `-j16` for default parallel builds.
+* `setcc` runs automatically on startup to apply the chosen compiler toolchain configuration.
+
+## �👥 Authors & Acknowledgments
 
 This configuration was inspired by and built upon excellent dotfiles, utility scripts, and technical guidance provided by the following authors:
 

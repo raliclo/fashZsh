@@ -194,6 +194,145 @@ alias prev='cd $prevfolder'
 
 
 # ==============================================================================
+# 📂 FILE AND FOLDER MANAGEMENT / 檔案與資料夾管理
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# ALIAS: nofiles
+# DESCRIPTION: Counts and displays the total number of non-hidden files in the 
+#              current directory using efficient Zsh glob modifiers.
+# 功能描述：計算並顯示當前目錄下的「非隱藏檔案」總數。此指令採用 Zsh 內建的 
+#          球狀擴充（Globbing）機制，比傳統的 'ls' 遞迴更有效率。
+# ------------------------------------------------------------------------------
+alias nofiles='echo "Total files in directory: $(print -l *(.) | wc -l)"'
+
+# ------------------------------------------------------------------------------
+# ALIAS: make1mb / make5mb / make10mb
+# DESCRIPTION: Creates a dummy file of a specified size (1MB, 5MB, or 10MB) 
+#              filled with zeros using the macOS native 'mkfile' utility.
+#              (Note: Size suffixes must be uppercase like M or G on macOS).
+# 功能描述：使用 macOS 內建的 'mkfile' 工具建立指定大小（1MB、5MB 或 10MB）
+#          的測試空檔案（內容全為零）。注意：macOS 系統的單位必須大寫。
+# ------------------------------------------------------------------------------
+alias make1mb='mkfile 1M ./1MB.dat'
+alias make5mb='mkfile 5M ./5MB.dat'
+alias make10mb='mkfile 10M ./10MB.dat'
+
+# ------------------------------------------------------------------------------
+# ALIAS: fsize
+# DESCRIPTION: Lists all files in the current directory, detailed with human-
+#              readable sizes, and automatically sorted from largest to smallest.
+# 功能描述：列出當前目錄下的所有檔案詳細資訊，並自動依據檔案大小「由大到小」
+#          進行排序，且檔案大小會以易讀的單位（如 KB, MB）顯示。
+# ------------------------------------------------------------------------------
+alias fsize='ls -lh *(oL.)'
+
+# ------------------------------------------------------------------------------
+# FUNCTION: trash()
+# DESCRIPTION: Safely moves specified files or folders to the macOS native 
+#              Trash folder (~/.Trash) instead of permanently deleting them.
+# 功能描述：安全刪除工具。將指定的檔案或資料夾移至 macOS 內建的「垃圾桶」
+#          （~/.Trash），避免因誤用系統的 'rm' 指令而導致檔案永久遺失。
+# ------------------------------------------------------------------------------
+trash () { 
+    command mv "$@" ~/.Trash ; 
+}
+
+# ==============================================================================
+# 📦 ARCHIVE EXTRACTION UTILITIES / 壓縮檔解包自動化工具
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# FUNCTION: extract()
+# DESCRIPTION: A smart, single-command utility to automatically detect and 
+#              extract almost all known archive formats based on their extensions.
+#              (Supports: .tar.lz4, .tar.xz, .tar.bz2, .tar.gz, .bz2, .rar, .gz, 
+#               .tar, .tbz2, .tgz, .zip, .Z, .xz, .7z, .lz4, .lzma)
+# 功能描述：智慧型萬用解壓功能。只需單一指令，即可自動根據副檔名判別並解開絕
+#          大多數常見的壓縮檔格式，省去記憶各種不同解壓參數的麻煩。
+# ------------------------------------------------------------------------------
+extract () {
+    if [ -f "$1" ] ; then
+        case "$1" in
+            *.tar.lz4)   lz4 -d "$1" -c | tar xf - ;;
+            *.tar.xz)    tar xf "$1"      ;;
+            *.tar.bz2)   tar xjf "$1"     ;;
+            *.tar.gz)    tar xzf "$1"     ;;
+            *.bz2)       bunzip2 "$1"     ;;
+            *.rar)       unrar e "$1"     ;;
+            *.gz)        gunzip "$1"      ;;
+            *.tar)       tar xf "$1"      ;;
+            *.tbz2)      tar xjf "$1"     ;;
+            *.tgz)       tar xzf "$1"     ;;
+            *.zip)       unzip "$1"       ;;
+            *.Z)         uncompress "$1"  ;;
+            *.xz)        xz -d "$1"       ;;
+            *.7z)        7z x "$1"        ;;
+            *.lz4)       unlz4 "$1"       ;;
+            *.lzma)      tar --lzma -xvf "$1" ;;
+            *.lz4a)      unlz4a "$1"        ;;
+            *)           echo "'$1' cannot be extracted via extract()" ;;
+        esac
+    else
+        echo "'$1' is not a valid file"
+    fi
+}
+
+# ==============================================================================
+# 🗜️ PARALLEL LZ4 DIRECTORY COMPRESSION / 多核心 LZ4 目錄平行壓縮工具
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# FUNCTION: ffilter()
+# DESCRIPTION: Escapes spaces, single quotes, and double quotes in file paths 
+#              passed via standard input. Often used as a reliable fallback 
+#              when 'find -print0' or standard xargs arguments fail.
+# 功能描述：路徑字元跳脫過濾器。自動將標準輸入（stdin）中的空白字元、單引號、
+#          雙引號加上反斜線（\）進行跳脫，專門用來解決路徑包含特殊字元時，
+#          'find -print0' 或 xargs 處理失敗的痛點。
+# ------------------------------------------------------------------------------
+function ffilter() {
+    sed -e "s/'/\\\'/g" -e 's/"/\\"/g' -e 's/ /\\ /g' 
+}
+
+# ------------------------------------------------------------------------------
+# FUNCTION: lz4a()
+# DESCRIPTION: Compresses a directory recursively using maximum LZ4 compression 
+#              (-9m) utilized across multiple CPU cores ($PACORES). It mirrors 
+#              the directory structure in a hidden '.lz4a' folder, archives it 
+#              into a '.lz4a' file, and compares the final sizes.
+# 功能描述：多核心平行資料夾壓縮。利用系統核心數（需預先設定 $PACORES 變數）
+#          平行調用 'lz4 -9m' 最高壓縮率，將指定資料夾內的檔案批次壓縮。
+#          過程中會暫存於隱藏的 '.lz4a' 目錄，最後打包為 '.lz4a' 封存檔
+#          並輸出前後的檔案大小對比。
+# ------------------------------------------------------------------------------
+function lz4a() {
+    find "$1" -type d -print0 | xargs -n 1 -P $PACORES -0 -I'{}' mkdir -p './.lz4a/{}'
+    find "$1" -type f | ffilter | xargs -n 1 -P $PACORES lz4 -9m
+    find "$1" -name '*.lz4' -print0 | xargs -n 1 -P $PACORES -0 -I'{}' mv '{}' './.lz4a/{}'
+    tar -cf "$1.lz4a" ".lz4a/$1" 
+    rm -rf .lz4a
+    du -sh "$1"
+    du -sh "$1.lz4a"
+}
+
+# ------------------------------------------------------------------------------
+# FUNCTION: unlz4a()
+# DESCRIPTION: Decompresses a '.lz4a' archive created by lz4a(). It extracts 
+#              the tarball, multi-threads the unlz4 decompression across cores, 
+#              restores files back to their original paths, and cleans up.
+# 功能描述：多核心平行資料夾解壓縮。用來解開由 'lz4dir' 產生的 '.lz4a' 
+#          壓縮檔。首先解開 tar 結構，再透過多核心平行執行 'unlz4' 解壓並
+#          刪除來源隱藏檔（--rm），最後將檔案還原至當前目錄並清理暫存。
+# ------------------------------------------------------------------------------
+function unlz4a() {
+    tar -xf "$1"
+    find .lz4a -type f | ffilter | xargs -n 1 -P $PACORES unlz4 -m --rm
+    mv .lz4a/* . 
+    rm -rf .lz4a
+}
+
+# ==============================================================================
 # 🚀 4. STARTUP SCRIPT MANAGEMENT (HOISTING) / 啟動腳本生命週期管理
 # ==============================================================================
 
