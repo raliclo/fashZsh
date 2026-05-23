@@ -1,4 +1,5 @@
 # 🚀 Cross-Platform Optimized Zsh Configuration
+> Other Languages: [繁體中文](README.zh-TW.md) 
 
 ![Zsh Support](https://img.shields.io/badge/Shell-Zsh%205.0+-blue?style=for-the-badge&logo=gnu-bash)
 ![Platform Support](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-orange?style=for-the-badge)
