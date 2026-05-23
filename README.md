@@ -75,7 +75,7 @@ cheditor nano     # Switch default editor to nano
 This configuration was inspired by and built upon excellent dotfiles, utility scripts, and technical guidance provided by the following authors:
 
 * **Ralic Lo** (ralic.lo@gmail.com) - Core architecture design and dynamic environment setups.
-* **Nathaniel Landau** ([Website / Resume](https://natelandau.com/nathaniel-landau-resume/)) - Robust bash/zsh shell scripting structures.
+* **Nathaniel Landau** ([Website / Resume](https://natelandau.com/nathaniel-landaus-resume/)) - Robust bash/zsh shell scripting structures.
 * Syntax and command logic insights driven by: [ExplainShell](https://explainshell.com/)
 
 ---
