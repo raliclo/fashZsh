@@ -59,6 +59,7 @@ elif [ "$(uname -s)" = "Darwin" ]; then
     export JAVA_HOME=$(/usr/libexec/java_home 2>/dev/null)
     export BREW_PREFIX="/usr/local"
     export BLOCKSIZE=4096
+    export PATH="$PATH:/Users/$UsrNAME/.cargo/bin"
     COLOR_FLAG="-G"
 fi
 
@@ -710,9 +711,11 @@ function START_UP@END() {
     # printenv       # Output environment map on terminal login / 登入時印出當前環境變數快照
     makeram
     diskutil list | grep "RAMDisk" -B4 | grep "/dev" | awk '{print $1}' | tail -n +2 | xargs -I {} diskutil eject {}
+    source ~/.hf_token 2>/dev/null
 }
 
 START_UP@END
 # NOTE: `START_UP@END` finalizes environment injection: it sets conservative
 # defaults (e.g., `MAKEJOBS`), applies `setcc`, and defines aliases used in
 # interactive shells. It is safe to re-run but should avoid heavy side-effects.
+source ~/.hf_token
