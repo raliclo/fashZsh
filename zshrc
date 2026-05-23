@@ -303,6 +303,7 @@ trash () {
 extract () {
     if [ -f "$1" ] ; then
         case "$1" in
+            *.tar.lz4)   lz4 -d -q -c $1 | tar -xf - ;;
             *.tar.xz)    tar xf "$1"      ;;
             *.tar.bz2)   tar xjf "$1"     ;;
             *.tar.gz)    tar xzf "$1"     ;;
@@ -368,6 +369,13 @@ function getar() {
     XZ_OPT=-e9 tar czf "$1".tgz "$1"
     du -sh $1
     du -sh $1.tgz
+}
+
+function tarlz4() {
+    # tar -cf - $1 | lz4 -T0 -12 -q > $1.tar.lz4
+    tar --use-compress-program=lz4 -cf  $1.tar.lz4 $1
+    du -sh $1
+    du -sh $1.tar.lz4 
 }
 
 # ------------------------------------------------------------------------------
@@ -618,8 +626,6 @@ function lz4bench() {
     fi
     echo $'[Info] 開始執行 tgz 與 lz4a 基準測試 / Starting benchmark for tgz and lz4a...\n'
 
-
-
     # --------------------------------------------------------------------------
     # 1.測試 getar 壓縮速度 / Test lz4a compression speed
     # --------------------------------------------------------------------------
@@ -632,6 +638,11 @@ function lz4bench() {
     echo $'\n[Info] 測試 lz4a  壓縮 / Testing lz4a compression:'
     nanoTimeElapsed lz4a $1
 
+    # --------------------------------------------------------------------------
+    # 1. 測試 tarlz4 壓縮速度 / Test lz4a compression speed
+    # --------------------------------------------------------------------------
+    echo $'\n[Info] 測試 tarlz4  壓縮 / Testing tarlz4 compression:'
+    nanoTimeElapsed tarlz4 $1
 
     echo $'\n=================================================='
     echo $'[Info] 開始評測解壓縮速度 / Benchmarking decompression score:'
@@ -665,9 +676,23 @@ function lz4bench() {
     cd ../.. > /dev/null 2>&1
 
     # --------------------------------------------------------------------------
+    # 2. 測試 tarlz4 解壓速度 / Test tarlz4 decompression speed
+    # --------------------------------------------------------------------------
+    mkdir -p ./xbenchTest/tarlz4 > /dev/null 2>&1
+    cp $1.tar.lz4 ./xbenchTest/tarlz4 > /dev/null 2>&1
+    cd ./xbenchTest/tarlz4 > /dev/null 2>&1
+    rm -rf $1 > /dev/null 2>&1
+    
+    echo $'\n[Info] 測試 tarlz4 解壓 / Testing tarlz4 extraction:' 
+    echo nanoTimeElapsed extract $1.tar.lz4
+    nanoTimeElapsed extract $1.tar.lz4
+    cd ../.. > /dev/null 2>&1
+
+    # --------------------------------------------------------------------------
     # 3. 環境環境清理 / Sandbox cleanup
     # --------------------------------------------------------------------------
-    diff -rq ./xbenchTest/tgz/$1 ./xbenchTest/lz4a/$1 > /dev/null 2>&1 && echo $'\n[Success] 解壓後的內容完全一致！ / Decompressed contents are identical!' || echo $'\n[Warning] 解壓後的內容不一致！ / Decompressed contents differ!'
+    diff -rq ./xbenchTest/tgz/$1 ./xbenchTest/lz4a/$1 > /dev/null 2>&1 && echo $'\n[Success] tgz,lz4a 解壓後的內容完全一致！ / Decompressed contents are identical!' || echo $'\n[Warning] tgz,lz4a  解壓後的內容不一致！ / tgz,lz4a Decompressed contents differ!'
+    diff -rq ./xbenchTest/tgz/$1 ./xbenchTest/tarlz4/$1 > /dev/null 2>&1 && echo $'\n[Success] tgz,tarlz4 解壓後的內容完全一致！ / Decompressed contents are identical!' || echo $'\n[Warning] tgz,tarlz4  解壓後的內容不一致！ / tgz,tarlz4 Decompressed contents differ!'
     # rm -rf xbenchTest
     
     echo $'\n[Info] 基準測試完成！ / Benchmark finished!'
