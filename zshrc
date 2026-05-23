@@ -303,7 +303,7 @@ trash () {
 extract () {
     if [ -f "$1" ] ; then
         case "$1" in
-            *.tar.lz4)   lz4 -d -q -c $1 | tar -xf - ;;
+            *.tar.lz4)   lz4 -T0 -d -q -c $1 | tar -xf - ;;
             *.tar.xz)    tar xf "$1"      ;;
             *.tar.bz2)   tar xjf "$1"     ;;
             *.tar.gz)    tar xzf "$1"     ;;
@@ -613,10 +613,10 @@ function unlz4a() {
 # ------------------------------------------------------------------------------
 # FUNCTION: lz4bench()
 # DESCRIPTION: Benchmarks and compares the performance (speed and execution time)
-#              between 'lz4a' and 'tgz' using precise 'date' timestamps.
+#              between 'lz4a','tgz', 'tarlz4' using precise 'date' timestamps.
 #
-# 功能描述：壓縮效能基準測試。利用 'date' 時間戳記精準計算並比較 'lz4a' 
-#          與 'tgz' 在壓縮與解壓縮時的實際總耗時（秒）。
+# 功能描述：壓縮效能基準測試。利用 'date' 時間戳記精準計算並比較 'lz4a' ,'tgz', 'tarlz4' 
+#        在壓縮與解壓縮過程中的實際耗時（秒）。
 # ------------------------------------------------------------------------------
 function lz4bench() {
     # 檢查是否輸入測試目標 / Check if input target is specified
@@ -624,7 +624,7 @@ function lz4bench() {
         echo "錯誤: 請指定要測試的目錄 / Error: Please specify a directory to benchmark" >&2
         return 1
     fi
-    echo $'[Info] 開始執行 tgz 與 lz4a 基準測試 / Starting benchmark for tgz and lz4a...\n'
+    echo $'[Info] 開始執行 tgz, lz4a, tarlz4 基準測試 / Starting benchmark for tgz, lz4a, tarlz4...\n'
 
     # --------------------------------------------------------------------------
     # 1.測試 getar 壓縮速度 / Test lz4a compression speed

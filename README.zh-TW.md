@@ -87,40 +87,40 @@ cheditor nano     # 將預設編輯器切換為 nano
 ```
 ## Note , this result is based on Mac Mini M4 16GB RAM, 10-core CPU, the best results is using tarlz4 and extract.
 
-[Info] 開始執行 tgz 與 lz4a 基準測試 / Starting benchmark for tgz and lz4a...
+[Info] 開始執行 tgz, lz4a, tarlz4 基準測試 / Starting benchmark for tgz, lz4a, tarlz4...
 
 
 [Info] 測試 getar 壓縮 / Testing getar compression:
-428K	fastBash
-200K	fastBash.tgz
-==> Process getar fastBash took: 0039450169 奈秒/nanoseconds
+234M	proj
+224M	proj.tgz
+==> Process getar proj took: 3705347061 奈秒/nanoseconds
 
 [Info] 測試 lz4a  壓縮 / Testing lz4a compression:
-428K	fastBash
-264K	fastBash.lz4a
-==> Process lz4a fastBash took: 0067592144 奈秒/nanoseconds
+234M	proj
+224M	proj.lz4a
+==> Process lz4a proj took: 2215111017 奈秒/nanoseconds
 
 [Info] 測試 tarlz4  壓縮 / Testing tarlz4 compression:
-428K	fastBash
-264K	fastBash.tar.lz4
-==> Process tarlz4 fastBash took: 0011141062 奈秒/nanoseconds
+234M	proj
+220M	proj.tar.lz4
+==> Process tarlz4 proj took: 0252645016 奈秒/nanoseconds
 
 ==================================================
 [Info] 開始評測解壓縮速度 / Benchmarking decompression score:
 ==================================================
 
 [Info] 測試 tgz 解壓 / Testing tgz extraction:
-nanoTimeElapsed extract fastBash.tgz
-==> Process extract fastBash.tgz took: 0007292032 奈秒/nanoseconds
+nanoTimeElapsed extract proj.tgz
+==> Process extract proj.tgz took: 0420404911 奈秒/nanoseconds
 
 [Info] 測試 unlz4a 解壓 / Testing unlz4a extraction:
-nanoTimeElapsed unlz4a fastBash.lz4a
-428K	/Volumes/RAMDisk/fastBash
-==> Process unlz4a fastBash.lz4a took: 0063432932 奈秒/nanoseconds
+nanoTimeElapsed unlz4a proj.lz4a
+234M	/Volumes/RAMDisk/proj
+==> Process unlz4a proj.lz4a took: 2128637075 奈秒/nanoseconds
 
 [Info] 測試 tarlz4 解壓 / Testing tarlz4 extraction:
-nanoTimeElapsed extract fastBash.tar.lz4
-==> Process extract fastBash.tar.lz4 took: 0008643150 奈秒/nanoseconds
+nanoTimeElapsed extract proj.tar.lz4
+==> Process extract proj.tar.lz4 took: 0295735121 奈秒/nanoseconds
 
 [Success] tgz,lz4a 解壓後的內容完全一致！ / Decompressed contents are identical!
 
