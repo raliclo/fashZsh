@@ -72,7 +72,7 @@ cheditor nano     # 將預設編輯器切換為 nano
 本配置啟發並參考了以下優秀開發者的工具腳本與技術指導：
 
 * **Ralic Lo** (raliclo@gmail.com) — 核心架構設計與動態環境配置。
-* **Nathaniel Landau** ([個人網站 / 履歷](https://natelandau.com/nathaniel-landau-resume/)) — 強健的 Bash/Zsh 腳本結構設計。
+* **Nathaniel Landau** ([個人網站 / 履歷](https://natelandau.com/nathaniel-landaus-resume/)) — 強健的 Bash/Zsh 腳本結構設計。
 * 語法與指令邏輯分析推薦工具：[ExplainShell](https://explainshell.com/)。
 
 ---
