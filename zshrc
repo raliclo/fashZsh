@@ -373,15 +373,6 @@ function getar() {
     du -sh $1.tgz
 }
 
-function lz4a2() {
-    find "$1" -type d -print0 | xargs -n 1 -P $PACORES -0 -I'{}' mkdir -p './.lz4a/{}'
-    find "$1" -type f | ffilter | xargs -n 1 -P $PACORES lz4 -9m
-    find "$1" -name '*.lz4' -print0 | xargs -n 1 -P $PACORES -0 -I'{}' mv '{}' './.lz4a/{}'
-    tar -cf "$1.lz4a" ".lz4a/$1" 
-    rm -rf .lz4a
-    du -sh "$1"
-    du -sh "$1.lz4a"
-}
 # ------------------------------------------------------------------------------
 # FUNCTION: lz4a()
 # DESCRIPTION: Compress a directory recursively using LZ4 with aggressive
@@ -465,15 +456,25 @@ function lz4a() {
     # Parallel Compression (On-demand mkdir for Output Directories)
     if [[ $verbose -eq 1 ]]; then
         echo "====> 開始處理目錄 / Starting processing directory: $target ($cores 核心 / cores) <===="
-        find $target \( -type d -exec mkdir -p $ramdisk/.lz4a/{} \; \) -o \( -type f -exec lz4 -12 -q -f {} /Volumes/RAMDisk/.lz4a/{}.lz4   \; \)
+        ## FASTER
+        find $target -type d -print0 | xargs -n 1 -P $cores -0 -I'{}' mkdir -p $ramdisk/.lz4a/'{}';
+        find $target -type f -print0 | xargs -n 1 -P $cores -0 -I '{}' sh -c '
+                lz4 -12 -q -f $1 /Volumes/RAMDisk/.lz4a/$1.lz4 
+        ' -- '{}'
+
+        ## SLOWER
+        # find $target \( -type d -exec mkdir -p $ramdisk/.lz4a/{} \; \) -o \( -type f -exec lz4 -12 -q -f {} /Volumes/RAMDisk/.lz4a/{}.lz4   \; \) 
+
     else
         # 安靜模式 / Quiet mode
-        # find $target -type d -print0 | xargs -n 1 -P $cores -0 -I'{}' mkdir -p $ramdisk/.lz4a/'{}';
-        # find $target -type f -print0 | xargs -n 1 -P $cores -0 -I '{}' sh -c '
-        #         lz4 -12 -q -f $1 /Volumes/RAMDisk/.lz4a/$1.lz4 
-        # ' -- '{}'
-        find $target \( -type d -exec mkdir -p $ramdisk/.lz4a/{} \; \) -o \( -type f -exec lz4 -12 -q -f {} /Volumes/RAMDisk/.lz4a/{}.lz4   \; \)
+        ## FASTER
+        find $target -type d -print0 | xargs -n 1 -P $cores -0 -I'{}' mkdir -p $ramdisk/.lz4a/'{}';
+        find $target -type f -print0 | xargs -n 1 -P $cores -0 -I '{}' sh -c '
+                lz4 -12 -q -f $1 /Volumes/RAMDisk/.lz4a/$1.lz4 
+        ' -- '{}'
 
+        ## SLOWER
+        # find $target \( -type d -exec mkdir -p $ramdisk/.lz4a/{} \; \) -o \( -type f -exec lz4 -12 -q -f {} /Volumes/RAMDisk/.lz4a/{}.lz4   \; \) 
     fi
 
     # 5. 打包、清理與環境還原 / Tar Archiving from RAM & Reclaim Environment
@@ -615,24 +616,40 @@ function lz4bench() {
     echo $'[Info] 開始執行 tgz 與 lz4a 基準測試 / Starting benchmark for tgz and lz4a...\n'
 
 
+
+    # --------------------------------------------------------------------------
+    # 1.測試 getar 壓縮速度 / Test lz4a compression speed
+    # --------------------------------------------------------------------------
+    echo $'\n[Info] 測試 getar 壓縮 / Testing getar compression:'
+    nanoTimeElapsed getar $1
+
     # --------------------------------------------------------------------------
     # 1. 測試 lz4a 壓縮速度 / Test lz4a compression speed
     # --------------------------------------------------------------------------
     echo $'\n[Info] 測試 lz4a  壓縮 / Testing lz4a compression:'
     nanoTimeElapsed lz4a $1
 
-    # --------------------------------------------------------------------------
-    # 3. 測試 getar 壓縮速度 / Test lz4a compression speed
-    # --------------------------------------------------------------------------
-    echo $'\n[Info] 測試 getar 壓縮 / Testing getar compression:'
-    nanoTimeElapsed getar $1
 
     echo $'\n=================================================='
     echo $'[Info] 開始評測解壓縮速度 / Benchmarking decompression score:'
     echo $'=================================================='
 
+
     # --------------------------------------------------------------------------
-    # 4. 測試 lz4a 解壓速度 / Test lz4a decompression speed
+    # 2. 測試 tgz 解壓速度 / Test tgz decompression speed
+    # --------------------------------------------------------------------------
+    mkdir -p ./xbenchTest/tgz  > /dev/null 2>&1
+    cp "$1.tgz" ./xbenchTest/tgz > /dev/null 2>&1
+    cd ./xbenchTest/tgz > /dev/null 2>&1
+    rm -rf $1 > /dev/null 2>&1
+
+    echo $'\n[Info] 測試 tgz 解壓 / Testing tgz extraction:'
+    echo nanoTimeElapsed extract $1.tgz
+    nanoTimeElapsed extract $1.tgz 
+    cd ../.. > /dev/null 2>&1
+
+    # --------------------------------------------------------------------------
+    # 2. 測試 lz4a 解壓速度 / Test lz4a decompression speed
     # --------------------------------------------------------------------------
     mkdir -p ./xbenchTest/lz4a > /dev/null 2>&1
     cp $1.lz4a ./xbenchTest/lz4a > /dev/null 2>&1
@@ -645,21 +662,7 @@ function lz4bench() {
     cd ../.. > /dev/null 2>&1
 
     # --------------------------------------------------------------------------
-    # 5. 測試 tgz 解壓速度 / Test tgz decompression speed
-    # --------------------------------------------------------------------------
-    mkdir -p ./xbenchTest/tgz  > /dev/null 2>&1
-    cp "$1.tgz" ./xbenchTest/tgz > /dev/null 2>&1
-    cd ./xbenchTest/tgz > /dev/null 2>&1
-    rm -rf $1 > /dev/null 2>&1
-
-    echo $'\n[Info] 測試 tgz 解壓 / Testing tgz extraction:'
-    echo nanoTimeElapsed extract $1.tgz
-    nanoTimeElapsed extract $1.tgz 
-    # rm -rf $1 > /dev/null 2>&1
-    cd ../.. > /dev/null 2>&1
-    
-    # --------------------------------------------------------------------------
-    # 6. 環境環境清理 / Sandbox cleanup
+    # 3. 環境環境清理 / Sandbox cleanup
     # --------------------------------------------------------------------------
     diff -rq ./xbenchTest/tgz/$1 ./xbenchTest/lz4a/$1 > /dev/null 2>&1 && echo $'\n[Success] 解壓後的內容完全一致！ / Decompressed contents are identical!' || echo $'\n[Warning] 解壓後的內容不一致！ / Decompressed contents differ!'
     # rm -rf xbenchTest
