@@ -67,7 +67,27 @@ cheditor vi       # 將預設編輯器切換為 vi
 cheditor nano     # 將預設編輯器切換為 nano
 ```
 
-## 👥 貢獻者與致謝 (Authors & Acknowledgments)
+## � 檔案與資料夾工具
+* `nofiles` : 使用高效率的 Zsh glob 扩展計算當前目錄下非隱藏檔案總數。
+* `make1mb`、`make5mb`、`make10mb` : 使用 macOS `mkfile` 建立 1MB、5MB、10MB 的測試檔案。
+* `fsize` : 以人類可讀形式列出目錄內檔案，並自動依大小從大到小排序。
+* `trash` : 將檔案或資料夾安全移至 `~/.Trash`，避免誤刪造成永久損失。
+* `extract` : 用單一指令判斷並解開多種常見壓縮格式，包含 `.tar.gz`、`.zip`、`.7z`、`.xz`、`.rar`、`.lz4` 等。
+
+## 🧩 平行壓縮與解壓工具
+* `ffilter` : 將 stdin 中的路徑空白與引號進行跳脫，讓帶特殊字元路徑的 `xargs` 管道更穩定。
+* `lz4a` : 透過系統核心數 `$PACORES` 並行壓縮資料夾，使用最高 LZ4 壓縮率 `-9m`，輸出 `.lz4a` 封存檔，並顯示壓縮前後大小對比。
+* `unlz4a` : 解開 `.lz4a` 封存檔，還原原始資料夾結構，並清理暫存檔案。
+
+## 🚀 啟動腳本與環境引導
+* `START_UP@BEGIN` 與 `START_UP@END` 為 shell 啟動期間的生命週期函式，負責初始化別名與最終環境導入。
+* `xxargs` 被別名為 `xargs -n 1 -P $PACORES`，讓管道運算具備平行處理效能。
+* `sll` 被別名為 `subl`，可快速以 Sublime Text 開啟檔案。
+* `cgrep` 被別名為 `grep --color=always`，確保管道搜尋結果始終顯示顏色高亮。
+* `MAKEJOBS` 預設設定為 `-j16`，方便平行編譯執行。
+* 系統啟動時會自動執行 `setcc`，套用預設編譯工具鏈設定。
+
+## �👥 貢獻者與致謝 (Authors & Acknowledgments)
 
 本配置啟發並參考了以下優秀開發者的工具腳本與技術指導：
 
